@@ -1626,6 +1626,13 @@
     html += "<h3>Form cues</h3><ul class=\"cues\">";
     (ex.teachCues || []).forEach(function (c) { html += "<li>" + esc(c) + "</li>"; });
     html += "</ul>";
+    var started = isLiftStarted(log, key);
+    if (!started && ex.watchUrl) {
+      html +=
+        '<a class="btn btn-ghost watch-lift" href="' +
+        esc(ex.watchUrl) +
+        '" target="_blank" rel="noopener">Watch</a>';
+    }
     if (!isLiftStarted(log, key)) {
       html += "</div>";
       html +=

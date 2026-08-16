@@ -857,6 +857,46 @@ window.BOTFIT.exercises = {
     ex.teachShow = teach[id][0];
     ex.teachCues = teach[id].slice(1);
   });
+
+  var watch = {
+    "hs-chest-press": "https://www.youtube.com/shorts/yEnHCp9H8R4",
+    "incline-db-press": "https://www.youtube.com/shorts/PiJQPOiMua4",
+    "sa-cable-press": "https://www.youtube.com/shorts/DmNYPgaHAEU",
+    "db-lateral": "https://www.youtube.com/shorts/JIhbYYA1Q90",
+    "triceps-pressdown": "https://www.youtube.com/shorts/8-PSiRwwvsk",
+    "pallof": "https://www.youtube.com/shorts/-aMIEisAxv8",
+    "front-plank": "https://www.youtube.com/shorts/E-PBfoIMc-0",
+    "assisted-pullup": "https://www.youtube.com/shorts/cYCeO0sAqkE",
+    "seated-row": "https://www.youtube.com/shorts/Ab6x-Awqc-Y",
+    "db-rdl": "https://www.youtube.com/shorts/EQ6n5JpFqzo",
+    "sa-cable-row": "https://www.youtube.com/shorts/DROCAPDVXu4",
+    "face-pull": "https://www.youtube.com/shorts/k2PsNj0zYYQ",
+    "db-curl": "https://www.youtube.com/shorts/b0pZWf3vfRk",
+    "suitcase": "https://www.youtube.com/shorts/5v-5aKMdtbg",
+    "goblet": "https://www.youtube.com/shorts/AF4ZMqa7Aqw",
+    "split-squat": "https://www.youtube.com/shorts/HVkvjj1CGwk",
+    "step-up": "https://www.youtube.com/shorts/5ksu8nrdVIE",
+    "leg-machine": "https://www.youtube.com/shorts/qj39ZQTr3pE",
+    "woodchop": "https://www.youtube.com/shorts/suSEgI6VpBg",
+    "side-plank": "https://www.youtube.com/shorts/lqQ8ugNjoWI",
+    "lat-pulldown": "https://www.youtube.com/shorts/oMJmAHRZXBk",
+    "chest-row": "https://www.youtube.com/shorts/tahGpBijHkY",
+    "rear-delt": "https://www.youtube.com/shorts/hWrcGjjd9VU",
+    "assisted-dip": "https://www.youtube.com/shorts/JcGwiiGyYFA",
+    "hammer-curl": "https://www.youtube.com/shorts/NyW2fT2gQhM",
+    "cable-er": "https://www.youtube.com/shorts/6bJPfDgdwN0",
+    "db-shrug": "https://www.youtube.com/shorts/9jxce8alatg",
+    "neck-iso": "https://www.youtube.com/shorts/GXbKeZtTfFY",
+    "kb-deadlift": "https://www.youtube.com/shorts/2mWYxJN3loI",
+    "db-press-circuit": "https://www.youtube.com/shorts/PiJQPOiMua4",
+    "cable-row-circuit": "https://www.youtube.com/shorts/Ab6x-Awqc-Y",
+    "goblet-circuit": "https://www.youtube.com/shorts/AF4ZMqa7Aqw",
+    "farmer-carry": "https://www.youtube.com/shorts/cTJLuCn4vSU"
+  };
+  Object.keys(watch).forEach(function (id) {
+    var ex = window.BOTFIT.exercises[id];
+    if (ex) ex.watchUrl = watch[id];
+  });
 })();
 
 window.BOTFIT.mobility = [
