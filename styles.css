@@ -22,7 +22,14 @@
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); }
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  overflow-x: hidden;
+  max-width: 100%;
+}
 html { height: 100%; }
 body {
   min-height: 100%;
@@ -35,13 +42,16 @@ body {
 
 button, input, textarea, select { font: inherit; color: inherit; }
 button { cursor: pointer; border: 0; }
-img { display: block; }
+img { display: block; max-width: 100%; }
+input, textarea, select { min-width: 0; max-width: 100%; }
 
 #app {
-  width: min(480px, 100%);
+  width: 100%;
+  max-width: 480px;
   margin: 0 auto;
   min-height: 100dvh;
   padding: calc(12px + var(--safe-t)) 16px calc(24px + var(--safe-b));
+  overflow-x: hidden;
 }
 
 .topbar {
@@ -66,11 +76,15 @@ img { display: block; }
   color: var(--amber);
   border: 1px solid var(--amber-dim);
   border-radius: 999px;
-  padding: 8px 12px;
-  font-size: 13px;
+  padding: 8px 10px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+  min-width: 0;
+  max-width: 52%;
+  text-align: right;
+  white-space: normal;
 }
 
 .date-line { color: var(--muted); font-size: 15px; margin: 0 0 6px; }
@@ -293,10 +307,12 @@ h3 {
 .set.is-current .set-head { color: var(--amber); }
 .set-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 8px;
+  min-width: 0;
+  max-width: 100%;
 }
-.set-grid.three { grid-template-columns: 1fr 1fr; }
+.set-grid.three { grid-template-columns: 1fr; }
 label.field { display: block; }
 label.field span {
   display: block;
@@ -460,7 +476,8 @@ textarea { min-height: 72px; font-size: 16px; font-weight: 500; resize: vertical
 .round-dot.is-on { background: var(--amber); }
 .round-dot.is-done { background: var(--green); }
 
-.stepper { display: flex; align-items: center; gap: 6px; }
+.stepper { display: flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; }
+.stepper input { flex: 1 1 auto; min-width: 0; width: 100%; }
 .stepper button {
   flex: 0 0 48px;
   min-width: 48px;
@@ -566,3 +583,23 @@ textarea { min-height: 72px; font-size: 16px; font-weight: 500; resize: vertical
 }
 .month-grid button.is-on.is-done::after { background: #000000; }
 .month-empty { min-height: 40px; }
+
+
+/* Phone lock: one column, log dock stays on screen */
+.card, .note, .where, .cues, .set, label.field, .recap-row, .topbar {
+  min-width: 0;
+  max-width: 100%;
+}
+.card, .note, .where, .cues li { overflow-wrap: anywhere; }
+.pin-log {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  margin: 16px -16px 0;
+  padding: 12px 16px calc(12px + var(--safe-b));
+  background: var(--bg);
+  border-top: 1px solid var(--line);
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.45);
+}
+.pin-log .actions { margin-top: 10px; }
+.pin-log .set { margin-bottom: 0; }
