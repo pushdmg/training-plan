@@ -144,6 +144,19 @@
     fn(all[key]);
     saveAll(all);
   }
+  function blankSet() {
+    return { weight: "", reps: "", time: "", note: "", done: false };
+  }
+  function isolateSet(row) {
+    if (!row || typeof row !== "object") return blankSet();
+    return {
+      weight: row.weight == null ? "" : row.weight,
+      reps: row.reps == null ? "" : row.reps,
+      time: row.time == null ? "" : row.time,
+      note: row.note == null ? "" : row.note,
+      done: row.done === true
+    };
+  }
   function lastWeight(exId, exceptDate) {
     const all = loadAll();
     const keys = Object.keys(all).sort().reverse();
@@ -157,14 +170,33 @@
     }
     return "";
   }
+  function lastWeightBefore(exId, date, setIdx) {
+    const sets = (dayLog(date).exercises || {})[exId] || [];
+    for (let i = setIdx - 1; i >= 0; i--) {
+      if (sets[i] && sets[i].weight) return String(sets[i].weight);
+    }
+    return lastWeight(exId, iso(date));
+  }
   function ensureSets(date, exId, n) {
     let out = [];
     patchDay(date, function (log) {
-      if (!log.exercises[exId]) log.exercises[exId] = [];
-      while (log.exercises[exId].length < n) {
-        log.exercises[exId].push({ weight: "", reps: "", time: "", note: "", done: false });
+      if (!Array.isArray(log.exercises[exId])) log.exercises[exId] = [];
+      const src = log.exercises[exId];
+      const next = [];
+      const seen = [];
+      const count = Math.max(n, src.length);
+      for (let i = 0; i < count; i++) {
+        const row = src[i];
+        if (row && seen.indexOf(row) !== -1) {
+          next.push(blankSet());
+        } else {
+          if (row) seen.push(row);
+          next.push(isolateSet(row));
+        }
       }
-      out = log.exercises[exId];
+      while (next.length < n) next.push(blankSet());
+      log.exercises[exId] = next;
+      out = next;
     });
     return out;
   }
@@ -172,13 +204,14 @@
     const i = Number(idx);
     if (!isFinite(i) || i < 0) return;
     patchDay(date, function (log) {
-      if (!log.exercises[exId]) log.exercises[exId] = [];
+      if (!Array.isArray(log.exercises[exId])) log.exercises[exId] = [];
       while (log.exercises[exId].length <= i) {
-        log.exercises[exId].push({ weight: "", reps: "", time: "", note: "", done: false });
+        log.exercises[exId].push(blankSet());
       }
-      const row = log.exercises[exId][i];
-      if (!row || typeof row !== "object") return;
-      row[field] = value;
+      const row = isolateSet(log.exercises[exId][i]);
+      if (field === "done") row.done = value === true || value === "true";
+      else row[field] = value;
+      log.exercises[exId][i] = row;
     });
     scheduleSync(date);
   }
@@ -933,17 +966,14 @@
     for (let i = 0; i < nSets; i++) {
       if (i === state.currentSet) continue;
       const s = sets[i] || {};
-      if (!s.done && !s.weight && !s.reps && !s.time && !s.note) continue;
+      if (s.done !== true) continue;
       const bits = [];
       if (s.weight) bits.push(s.weight);
       if (s.reps) bits.push(s.reps + (ex.perSide ? "/side" : "r"));
       if (s.time) bits.push(s.time + "s");
       if (s.note) bits.push(s.note);
-      if (s.done && !bits.length) bits.push("done");
       compact += '<div class="set" data-act="focus-set" data-set="' + i + '">';
-      compact += '<div class="set-head"><span>Set ' + (i + 1) + "</span>";
-      if (s.done) compact += "<span>logged</span>";
-      compact += "</div>";
+      compact += '<div class="set-head"><span>Set ' + (i + 1) + "</span><span>logged</span></div>";
       if (bits.length) compact += '<p class="hint">' + esc(bits.join(" · ")) + "</p>";
       compact += "</div>";
     }
@@ -953,21 +983,23 @@
     html += "</div>";
 
     const i = state.currentSet;
-    const s = sets[i] || {};
+    const s = isolateSet(sets[i]);
+    const suggest = lastWeightBefore(key, date, i);
+    const weightShow = s.weight || (s.done !== true && suggest) || "";
     html += '<div class="pin-log">';
     html += '<div class="set is-current" data-act="focus-set" data-set="' + i + '">';
     html += '<div class="set-head"><span>Set ' + (i + 1) + " · now</span>";
-    if (s.done) html += "<span>logged</span>";
+    if (s.done === true) html += "<span>logged</span>";
     html += "</div>";
     if (ex.log === "done") {
       html +=
         '<button type="button" class="btn btn-ghost" data-act="mark-done" data-set="' + i + '">' +
-        (s.done ? "Round done ✓" : "Mark this round done") + "</button>";
+        (s.done === true ? "Round done ✓" : "Mark this round done") + "</button>";
     } else {
       html += '<div class="set-grid">';
       if (ex.log === "weight-reps" || ex.log === "weight-time") {
         html += '<label class="field"><span>' + esc(ex.weightLabel || "Weight (lb)") + "</span>" +
-          stepperHtml(key, i, "weight", s.weight || "", 5, i === 0 && last ? last : "0") + "</label>";
+          stepperHtml(key, i, "weight", weightShow, 5, suggest || last || "0") + "</label>";
       }
       if (ex.log === "weight-reps") {
         html += '<label class="field field-reps"><span>Reps' + (ex.perSide ? " / side" : "") + "</span>" +
