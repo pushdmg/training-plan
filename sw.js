@@ -1,4 +1,4 @@
-const CACHE = "botfit-v1";
+const CACHE = "botfit-v2";
 const ASSETS = [
   "./",
   "./index.html",
@@ -6,9 +6,7 @@ const ASSETS = [
   "./app.js",
   "./data.js",
   "./manifest.json",
-  "./icon.svg",
-  "./icon-192.png",
-  "./icon-512.png"
+  "./icon.svg"
 ];
 
 self.addEventListener("install", (event) => {
@@ -28,16 +26,13 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      if (cached) return cached;
-      return fetch(event.request)
-        .then((res) => {
-          if (!res || res.status !== 200 || res.type === "opaque") return res;
-          const copy = res.clone();
-          caches.open(CACHE).then((cache) => cache.put(event.request, copy));
-          return res;
-        })
-        .catch(() => caches.match("./index.html"));
-    })
+    fetch(event.request)
+      .then((res) => {
+        if (!res || res.status !== 200 || res.type === "opaque") return res;
+        const copy = res.clone();
+        caches.open(CACHE).then((cache) => cache.put(event.request, copy));
+        return res;
+      })
+      .catch(() => caches.match(event.request).then((cached) => cached || caches.match("./index.html")))
   );
 });
