@@ -404,19 +404,25 @@ textarea { min-height: 72px; font-size: 16px; font-weight: 500; resize: vertical
   padding: 14px;
   margin-bottom: 10px;
   min-height: 72px;
-  touch-action: manipulation;
+  touch-action: pan-y;
 }
 .check.is-on { border-color: var(--green); background: var(--green-bg); }
 .check .box {
-  width: 32px;
-  height: 32px;
+  width: 52px;
+  height: 52px;
+  min-width: 52px;
+  min-height: 52px;
+  padding: 0;
   border-radius: 10px;
   border: 2px solid var(--muted);
   flex: 0 0 auto;
   display: grid;
   place-items: center;
-  margin-top: 2px;
+  margin-top: 0;
   font-weight: 800;
+  background: transparent;
+  color: inherit;
+  touch-action: manipulation;
 }
 .check.is-on .box { background: var(--green); border-color: var(--green); color: #000000; }
 .check b { display: block; margin-bottom: 4px; }
