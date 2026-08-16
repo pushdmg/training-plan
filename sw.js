@@ -1,4 +1,4 @@
-const CACHE = "botfit-v13";
+const CACHE = "botfit-v14";
 const ASSETS = [
   "./",
   "./index.html",
