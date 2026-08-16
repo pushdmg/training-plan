@@ -119,21 +119,29 @@
       .replace(/"/g, "&quot;");
   }
 
+  let storeMem = null;
+  function emptyDay() {
+    return { warmup: {}, exercises: {}, completed: false, satChoice: null, highStress: false };
+  }
   function loadAll() {
+    if (storeMem) return storeMem;
     try {
-      return JSON.parse(localStorage.getItem(STORE) || "{}");
+      const raw = JSON.parse(localStorage.getItem(STORE) || "{}");
+      storeMem = raw && typeof raw === "object" ? raw : {};
     } catch (e) {
-      return {};
+      storeMem = {};
     }
+    return storeMem;
   }
   function saveAll(all) {
-    try { localStorage.setItem(STORE, JSON.stringify(all)); } catch (e) {}
+    storeMem = all && typeof all === "object" ? all : (storeMem || {});
+    try { localStorage.setItem(STORE, JSON.stringify(storeMem)); } catch (e) {}
   }
   function dayLog(date) {
     const all = loadAll();
     const key = iso(date);
     if (!all[key]) {
-      all[key] = { warmup: {}, exercises: {}, completed: false, satChoice: null, highStress: false };
+      all[key] = emptyDay();
       saveAll(all);
     }
     return all[key];
@@ -141,7 +149,7 @@
   function patchDay(date, fn) {
     const all = loadAll();
     const key = iso(date);
-    if (!all[key]) all[key] = { warmup: {}, exercises: {}, completed: false, satChoice: null, highStress: false };
+    if (!all[key]) all[key] = emptyDay();
     fn(all[key]);
     saveAll(all);
   }
@@ -159,57 +167,53 @@
       logged: row.logged === true
     };
   }
-  function repsPlaceholder(ex) {
-    return String((ex && ex.reps) || "").split(/[^\d]/)[0] || "8";
+  function setHasValue(s) {
+    if (!s) return false;
+    return !!(String(s.weight || "").trim() || String(s.reps || "").trim() || String(s.time || "").trim());
   }
-  function sanitizeUpcomingSet(date, exId, idx) {
-    if (!exId || !isFinite(idx) || idx < 0) return;
-    patchDay(date, function (log) {
-      if (!Array.isArray(log.exercises[exId])) log.exercises[exId] = [];
-      const sets = log.exercises[exId];
-      while (sets.length <= idx) sets.push(blankSet());
-      const isolated = [];
-      const seen = [];
-      for (let i = 0; i < sets.length; i++) {
-        const src = sets[i];
-        if (src && seen.indexOf(src) !== -1) isolated.push(blankSet());
-        else {
-          if (src) seen.push(src);
-          isolated.push(isolateSet(src));
-        }
-      }
-      const row = isolated[idx];
-      if (row.logged !== true) {
-        row.done = false;
-        row.logged = false;
-      }
-      isolated[idx] = isolateSet(row);
-      log.exercises[exId] = isolated;
-    });
+  function isLoggedSet(s) {
+    return !!(s && s.logged === true && setHasValue(s));
   }
-  function advanceCurrentSet() {
-    state.currentSet += 1;
-    const list = currentExerciseList();
-    if (!list[state.exIndex]) return;
-    sanitizeUpcomingSet(state.selectedDate, circuitKey(list[state.exIndex]), state.currentSet);
+  function liftBaseId(exId) {
+    return String(exId || "").split("::")[0];
+  }
+  function sameLift(id, want) {
+    const a = liftBaseId(id);
+    const b = liftBaseId(want);
+    return !!(a && b && a === b);
   }
   function lastWeight(exId, exceptDate) {
+    const want = liftBaseId(exId);
+    if (!want) return "";
     const all = loadAll();
     const keys = Object.keys(all).sort().reverse();
     for (let i = 0; i < keys.length; i++) {
       if (exceptDate && keys[i] === exceptDate) continue;
-      const sets = all[keys[i]].exercises && all[keys[i]].exercises[exId];
-      if (!sets) continue;
-      for (let s = sets.length - 1; s >= 0; s--) {
-        if (sets[s] && sets[s].weight) return sets[s].weight;
+      const exs = all[keys[i]] && all[keys[i]].exercises;
+      if (!exs || typeof exs !== "object") continue;
+      const ids = Object.keys(exs);
+      for (let k = 0; k < ids.length; k++) {
+        if (!sameLift(ids[k], want)) continue;
+        const sets = exs[ids[k]];
+        if (!Array.isArray(sets)) continue;
+        for (let s = sets.length - 1; s >= 0; s--) {
+          if (sets[s] && String(sets[s].weight || "").trim()) return String(sets[s].weight);
+        }
       }
     }
     return "";
   }
   function lastWeightBefore(exId, date, setIdx) {
-    const sets = (dayLog(date).exercises || {})[exId] || [];
-    for (let i = setIdx - 1; i >= 0; i--) {
-      if (sets[i] && sets[i].weight) return String(sets[i].weight);
+    const want = liftBaseId(exId);
+    const exs = (dayLog(date).exercises || {});
+    const ids = Object.keys(exs);
+    for (let k = 0; k < ids.length; k++) {
+      if (!sameLift(ids[k], want)) continue;
+      const sets = exs[ids[k]] || [];
+      const last = sameLift(ids[k], exId) && ids[k] === exId ? setIdx : sets.length;
+      for (let i = last - 1; i >= 0; i--) {
+        if (sets[i] && String(sets[i].weight || "").trim()) return String(sets[i].weight);
+      }
     }
     return lastWeight(exId, iso(date));
   }
@@ -247,13 +251,45 @@
       const row = isolateSet(log.exercises[exId][i]);
       if (field === "done") {
         row.done = value === true || value === "true";
-        if (row.done) row.logged = true;
-      } else if (field !== "logged") {
-        row[field] = value;
+        row.logged = row.done && setHasValue(row);
+        if (!row.logged) row.done = false;
+      } else if (field === "logged") {
+        row.logged = (value === true || value === "true") && setHasValue(row);
+        if (!row.logged) row.done = false;
+      } else row[field] = value;
+      if (row.logged && !setHasValue(row)) {
+        row.logged = false;
+        row.done = false;
       }
-      log.exercises[exId][i] = isolateSet(row);
+      log.exercises[exId][i] = row;
     });
     scheduleSync(date);
+  }
+
+  function sanitizeUpcomingSet(exId, idx) {
+    if (exId == null || !isFinite(Number(idx)) || Number(idx) < 0) return;
+    const i = Number(idx);
+    const baseId = String(exId).split("::")[0];
+    const ex = D.exercises[baseId];
+    if (ex && ex.log === "done") return;
+    patchDay(state.selectedDate, function (log) {
+      if (!Array.isArray(log.exercises[exId])) log.exercises[exId] = [];
+      while (log.exercises[exId].length <= i) log.exercises[exId].push(blankSet());
+      const row = isolateSet(log.exercises[exId][i]);
+      if (!isLoggedSet(row)) {
+        row.done = false;
+        row.logged = false;
+      }
+      log.exercises[exId][i] = row;
+    });
+  }
+
+  function advanceCurrentSet() {
+    state.currentSet += 1;
+    const list = currentExerciseList();
+    if (list[state.exIndex]) {
+      sanitizeUpcomingSet(circuitKey(list[state.exIndex]), state.currentSet);
+    }
   }
 
   function loadAdjust() {
@@ -794,8 +830,7 @@
       '<div class="stepper">' +
       '<button type="button" data-act="step" data-ex="' + exId + '" data-set="' + setIdx +
       '" data-field="' + field + '" data-delta="-' + step + '" aria-label="decrease">−</button>' +
-      '<input inputmode="decimal" size="4" autocomplete="off" name="' + esc(exId) + "-" + setIdx + "-" + field +
-      '" data-act="log" data-ex="' + exId + '" data-set="' + setIdx +
+      '<input inputmode="decimal" size="4" data-act="log" data-ex="' + exId + '" data-set="' + setIdx +
       '" data-field="' + field + '" value="' + esc(value) + '" placeholder="' + esc(placeholder || "") + '">' +
       '<button type="button" data-act="step" data-ex="' + exId + '" data-set="' + setIdx +
       '" data-field="' + field + '" data-delta="' + step + '" aria-label="increase">+</button>' +
@@ -974,12 +1009,10 @@
     const exId = list[state.exIndex];
     const ex = D.exercises[exId];
     const nSets = isCircuit ? 1 : setsFor(ex, week, log.highStress, date);
-    const key = circuitKey(exId);
-    let sets = ensureSets(date, key, nSets);
+    const sets = ensureSets(date, circuitKey(exId), nSets);
     if (state.currentSet >= nSets) state.currentSet = nSets - 1;
-    sanitizeUpcomingSet(date, key, state.currentSet);
-    sets = ensureSets(date, key, nSets);
-    const last = lastWeight(isCircuit ? key : exId, iso(date));
+    const last = lastWeight(isCircuit ? circuitKey(exId) : exId, iso(date));
+    const key = circuitKey(exId);
 
     let html = '<div class="ex-main">';
     html += topbar(week);
@@ -1021,8 +1054,8 @@
     let compact = "";
     for (let i = 0; i < nSets; i++) {
       if (i === state.currentSet) continue;
-      const s = isolateSet(sets[i]);
-      if (s.logged !== true) continue;
+      const s = sets[i] || {};
+      if (!isLoggedSet(s)) continue;
       const bits = [];
       if (s.weight) bits.push(s.weight);
       if (s.reps) bits.push(s.reps + (ex.perSide ? "/side" : "r"));
@@ -1039,18 +1072,19 @@
     html += "</div>";
 
     const i = state.currentSet;
-    const s = isolateSet(sets[i]);
+    sanitizeUpcomingSet(key, i);
+    const s = isolateSet(((dayLog(date).exercises || {})[key] || sets)[i]);
     const suggest = lastWeightBefore(key, date, i);
-    const weightShow = s.weight || (s.logged !== true && suggest) || "";
+    const weightShow = s.weight || suggest || "";
     html += '<div class="pin-log">';
     html += '<div class="set is-current" data-act="focus-set" data-set="' + i + '">';
     html += '<div class="set-head"><span>Set ' + (i + 1) + " · now</span>";
-    if (s.logged === true) html += "<span>logged</span>";
+    if (isLoggedSet(s)) html += "<span>logged</span>";
     html += "</div>";
     if (ex.log === "done") {
       html +=
         '<button type="button" class="btn btn-ghost" data-act="mark-done" data-set="' + i + '">' +
-        (s.logged === true ? "Round done ✓" : "Mark this round done") + "</button>";
+        (s.done === true ? "Round done ✓" : "Mark this round done") + "</button>";
     } else {
       html += '<div class="set-grid">';
       if (ex.log === "weight-reps" || ex.log === "weight-time") {
@@ -1059,7 +1093,7 @@
       }
       if (ex.log === "weight-reps") {
         html += '<label class="field field-reps"><span>Reps' + (ex.perSide ? " / side" : "") + "</span>" +
-          stepperHtml(key, i, "reps", s.reps || "", 1, repsPlaceholder(ex)) + "</label>";
+          stepperHtml(key, i, "reps", s.reps || "", 1, String(ex.reps).split(/[^\d]/)[0] || "8") + "</label>";
       }
       if (ex.log === "time" || ex.log === "weight-time") {
         html += '<label class="field"><span>Seconds</span>' +
@@ -1389,12 +1423,20 @@
     } catch (e) {}
   }
 
+  function setDock(on) {
+    if ($app) $app.classList.toggle("has-dock", !!on);
+    document.body.classList.toggle("has-dock", !!on);
+    document.documentElement.classList.toggle("has-dock", !!on);
+  }
+
   let lastRenderedView = null;
   function render() {
     persistUI();
     const prevView = lastRenderedView;
     const sameView = prevView === state.view;
     const keepY = sameView && state.view === "home" ? window.scrollY : 0;
+    const dock = state.view === "warmup" || state.view === "exercise" || state.view === "mobility" || state.view === "off";
+    setDock(dock);
     if (state.view === "home") renderHome();
     else if (state.view === "warmup") renderWarmup();
     else if (state.view === "exercise") renderExercise();
@@ -1408,8 +1450,6 @@
     renderOverlay();
     if (!sameView) window.scrollTo(0, 0);
     else if (state.view === "home") window.scrollTo(0, keepY);
-    const main = $app.querySelector(".ex-main");
-    if (main && state.view !== "home") main.scrollTop = 0;
   }
 
   function startSession() {
@@ -1451,28 +1491,11 @@
     startSession();
   }
 
-  function flushVisibleSetFields(loggedIdx) {
-    if (!$app) return;
-    const inputs = $app.querySelectorAll("[data-act='log']");
-    for (let n = 0; n < inputs.length; n++) {
-      const el = inputs[n];
-      const idx = Number(el.getAttribute("data-set"));
-      if (idx !== loggedIdx) continue;
-      const field = el.getAttribute("data-field");
-      const exId = el.getAttribute("data-ex");
-      if (!field || !exId) continue;
-      if (field === "reps" || field === "weight" || field === "time" || field === "note") {
-        writeSet(state.selectedDate, exId, loggedIdx, field, el.value);
-      }
-    }
-  }
-
   function markSetDone() {
     const list = currentExerciseList();
     if (!list[state.exIndex]) return;
     const exId = circuitKey(list[state.exIndex]);
     const loggedIdx = state.currentSet;
-    flushVisibleSetFields(loggedIdx);
     writeSet(state.selectedDate, exId, loggedIdx, "done", true);
   }
 
@@ -1481,8 +1504,9 @@
     const ex = D.exercises[list[state.exIndex]];
     const isCircuit = dayMeta(state.selectedDate).type === "sat" && state.satChoice === "circuit";
     const nSets = isCircuit ? 1 : setsFor(ex, weekNumber(state.selectedDate), dayLog(state.selectedDate).highStress, state.selectedDate);
-    markSetDone();
-    const last = state.currentSet >= nSets - 1;
+    const loggedIdx = state.currentSet;
+    writeSet(state.selectedDate, circuitKey(list[state.exIndex]), loggedIdx, "done", true);
+    const last = loggedIdx >= nSets - 1;
     if (isCircuit) {
       if (ex.rest) startRest(ex.rest, "Rest", null);
       return;
@@ -1596,9 +1620,7 @@
       state.currentSet = Number(t.getAttribute("data-set"));
       render();
     } else if (act === "mark-done") {
-      const loggedIdx = Number(t.getAttribute("data-set"));
-      const exId = circuitKey(currentExerciseList()[state.exIndex]);
-      writeSet(state.selectedDate, exId, loggedIdx, "done", true);
+      writeSet(state.selectedDate, circuitKey(currentExerciseList()[state.exIndex]), Number(t.getAttribute("data-set")), "done", true);
       render();
     } else if (act === "log-set") {
       logSetAndRest();
@@ -1644,10 +1666,7 @@
       const exId = t.getAttribute("data-ex");
       const delta = Number(t.getAttribute("data-delta"));
       const log = dayLog(state.selectedDate);
-      const visible = $app.querySelector(
-        "input[data-act='log'][data-ex='" + exId + "'][data-set='" + idx + "'][data-field='" + field + "']"
-      );
-      const cur = (visible && visible.value) || ((log.exercises[exId] || [])[idx] || {})[field];
+      const cur = ((log.exercises[exId] || [])[idx] || {})[field];
       const n = (parseFloat(cur) || 0) + delta;
       const next = field === "reps" ? Math.max(0, Math.round(n)) : Math.max(0, Math.round(n * 2) / 2);
       writeSet(state.selectedDate, exId, idx, field, String(next));
