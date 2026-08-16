@@ -197,6 +197,11 @@
     all[key] = rec;
     saveAdjust(all);
   }
+  function sameAdjust(key, rec) {
+    const cur = getAdjust(key);
+    if (!cur) return false;
+    return cur.sets === rec.sets && cur.modifier === rec.modifier && cur.reason === rec.reason;
+  }
 
   function loadQueue() {
     try {
@@ -461,6 +466,7 @@
           modifier: 0.75,
           reason: "Hard session on " + fromShort + " · 2 sets today"
         };
+        if (sameAdjust(iso(d), rec)) return;
         setAdjust(iso(d), rec);
         queueAdjustment("rpe", rec, iso(d));
       });
@@ -482,6 +488,7 @@
         reason: "Last sessions felt easy · room to push"
       };
       if (w >= 2 && w <= 7) rec.sets = 3;
+      if (sameAdjust(iso(d), rec)) return;
       setAdjust(iso(d), rec);
       queueAdjustment("rpe", rec, iso(d));
     });
@@ -503,6 +510,7 @@
       const days = upcomingLiftDates(today, 1, true);
       if (!days.length) return;
       const rec = { sets: 2, modifier: 0.75, reason: "Heavy activity nearby · 2 sets today" };
+      if (sameAdjust(iso(days[0]), rec)) return;
       setAdjust(iso(days[0]), rec);
       queueAdjustment("external", rec, iso(days[0]));
       if (state.view === "home") render();
