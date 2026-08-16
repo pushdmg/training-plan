@@ -968,14 +968,14 @@
       if (ex.log === "weight-reps" || ex.log === "weight-time") {
         html += '<label class="field"><span>' + esc(ex.weightLabel || "Weight (lb)") + "</span>" +
           stepperHtml(key, i, "weight", s.weight || "", 5, i === 0 && last ? last : "0") + "</label>";
-        }
-        if (ex.log === "weight-reps") {
-          html += '<label class="field"><span>Reps' + (ex.perSide ? " / side" : "") + "</span>" +
-            stepperHtml(key, i, "reps", s.reps || "", 1, String(ex.reps).split(/[^\d]/)[0] || "8") + "</label>";
-        }
-        if (ex.log === "time" || ex.log === "weight-time") {
-          html += '<label class="field"><span>Seconds</span>' +
-            stepperHtml(key, i, "time", s.time || "", 5, String(ex.hold || 30)) + "</label>";
+      }
+      if (ex.log === "weight-reps") {
+        html += '<label class="field field-reps"><span>Reps' + (ex.perSide ? " / side" : "") + "</span>" +
+          stepperHtml(key, i, "reps", s.reps || "", 1, String(ex.reps).split(/[^\d]/)[0] || "8") + "</label>";
+      }
+      if (ex.log === "time" || ex.log === "weight-time") {
+        html += '<label class="field"><span>Seconds</span>' +
+          stepperHtml(key, i, "time", s.time || "", 5, String(ex.hold || 30)) + "</label>";
       }
       html += "</div>";
       if (ex.note) {

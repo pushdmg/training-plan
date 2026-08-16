@@ -333,8 +333,17 @@ h3 {
   gap: 8px;
   min-width: 0;
   max-width: 100%;
+  width: 100%;
 }
 .set-grid.three { grid-template-columns: 1fr; }
+.pin-log .set-grid > .field,
+.pin-log .field-reps {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  flex-shrink: 0;
+}
 label.field { display: block; }
 label.field span {
   display: block;
