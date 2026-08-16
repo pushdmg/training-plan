@@ -266,6 +266,11 @@ h3 {
   color: var(--text);
   border: 1px solid var(--line);
 }
+a.btn { text-decoration: none; color: inherit; }
+.watch-lift {
+  margin: 12px 0 4px;
+  min-height: 52px;
+}
 .btn-danger { background: transparent; color: var(--muted); min-height: 48px; font-weight: 600; }
 .btn[disabled] { opacity: 0.45; }
 
