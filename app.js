@@ -832,8 +832,15 @@
       body += '<div class="actions"><button type="button" class="btn btn-primary" data-act="start">' + label + "</button></div>";
     } else {
       const n = meta.exercises.length;
-      const firstId = meta.exercises[0];
-      const firstLift = (D.exercises[firstId] && D.exercises[firstId].name) || "the first lift";
+      const firstByDay = {
+        mon: "Hammer Strength chest press",
+        tue: "assisted pull-up",
+        thu: "goblet",
+        fri: "lat pulldown"
+      };
+      const firstLift = firstByDay[meta.id] ||
+        (D.exercises[meta.exercises[0]] && D.exercises[meta.exercises[0]].name) ||
+        "the first lift";
       const weekday = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][jsDay(date)];
       const label = log.completed ? "View recap" : log.started && !log.completed ? "Resume session" : "Start session";
       body +=
