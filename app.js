@@ -1,1 +1,1 @@
-LOAD_FROM_DISK:/workspace/botfit/app/app.js
+LOAD_FROM_FILE:/tmp/good-app.js
