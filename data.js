@@ -421,7 +421,7 @@ window.BOTFIT.exercises = {
   "chest-row": {
     name: "Chest-supported dumbbell row",
     where: "Flat/incline benches + Dumbbell rack",
-    setup: "Set a bench to a low incline (~<30°). Lie face-down with your chest on the pad and feet on the floor. Dumbbells hanging under your shoulders. Head stays in line with your spine — do not crane up to watch yourself in a mirror.",
+    setup: "Set a bench to a low incline (~30°). Lie face-down with your chest on the pad and feet on the floor. Dumbbells hanging under your shoulders. Head stays in line with your spine — do not crane up to watch yourself in a mirror.",
     cues: [
       "Row the bells toward your hips, not your ears.",
       "Squeeze at the top and pause.",
