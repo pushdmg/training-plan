@@ -144,10 +144,11 @@
     fn(all[key]);
     saveAll(all);
   }
-  function lastWeight(exId) {
+  function lastWeight(exId, exceptDate) {
     const all = loadAll();
     const keys = Object.keys(all).sort().reverse();
     for (let i = 0; i < keys.length; i++) {
+      if (exceptDate && keys[i] === exceptDate) continue;
       const sets = all[keys[i]].exercises && all[keys[i]].exercises[exId];
       if (!sets) continue;
       for (let s = sets.length - 1; s >= 0; s--) {
@@ -168,12 +169,16 @@
     return out;
   }
   function writeSet(date, exId, idx, field, value) {
+    const i = Number(idx);
+    if (!isFinite(i) || i < 0) return;
     patchDay(date, function (log) {
       if (!log.exercises[exId]) log.exercises[exId] = [];
-      while (log.exercises[exId].length <= idx) {
+      while (log.exercises[exId].length <= i) {
         log.exercises[exId].push({ weight: "", reps: "", time: "", note: "", done: false });
       }
-      log.exercises[exId][idx][field] = value;
+      const row = log.exercises[exId][i];
+      if (!row || typeof row !== "object") return;
+      row[field] = value;
     });
     scheduleSync(date);
   }
@@ -716,7 +721,7 @@
       '<div class="stepper">' +
       '<button type="button" data-act="step" data-ex="' + exId + '" data-set="' + setIdx +
       '" data-field="' + field + '" data-delta="-' + step + '" aria-label="decrease">−</button>' +
-      '<input inputmode="decimal" data-act="log" data-ex="' + exId + '" data-set="' + setIdx +
+      '<input inputmode="decimal" size="4" data-act="log" data-ex="' + exId + '" data-set="' + setIdx +
       '" data-field="' + field + '" value="' + esc(value) + '" placeholder="' + esc(placeholder || "") + '">' +
       '<button type="button" data-act="step" data-ex="' + exId + '" data-set="' + setIdx +
       '" data-field="' + field + '" data-delta="' + step + '" aria-label="increase">+</button>' +
@@ -880,10 +885,11 @@
     const nSets = isCircuit ? 1 : setsFor(ex, week, log.highStress, date);
     const sets = ensureSets(date, circuitKey(exId), nSets);
     if (state.currentSet >= nSets) state.currentSet = nSets - 1;
-    const last = lastWeight(isCircuit ? circuitKey(exId) : exId);
+    const last = lastWeight(isCircuit ? circuitKey(exId) : exId, iso(date));
     const key = circuitKey(exId);
 
-    let html = topbar(week);
+    let html = '<div class="ex-main">';
+    html += topbar(week);
     const stepLabel = isCircuit
       ? "R" + (state.round + 1) + " · " + (state.exIndex + 1) + "/" + list.length
       : (state.exIndex + 1) + " of " + list.length;
@@ -919,41 +925,63 @@
     html += "</div>";
     if (last) html += '<p class="hint">Last logged weight: ' + esc(last) + "</p>";
 
+    let compact = "";
     for (let i = 0; i < nSets; i++) {
+      if (i === state.currentSet) continue;
       const s = sets[i] || {};
-      const cur = i === state.currentSet;
-      html += '<div class="set' + (cur ? " is-current" : "") + '" data-act="focus-set" data-set="' + i + '">';
-      html += '<div class="set-head"><span>Set ' + (i + 1) + (cur ? " · now" : "") + "</span>";
-      if (s.done) html += "<span>logged</span>";
-      html += "</div>";
-      if (ex.log === "done") {
-        html +=
-          '<button type="button" class="btn btn-ghost" data-act="mark-done" data-set="' + i + '">' +
-          (s.done ? "Round done ✓" : "Mark this round done") + "</button>";
-      } else {
-        html += '<div class="set-grid">';
-        if (ex.log === "weight-reps" || ex.log === "weight-time") {
-          html += '<label class="field"><span>' + esc(ex.weightLabel || "Weight (lb)") + "</span>" +
-            stepperHtml(key, i, "weight", s.weight, 5, last || "0") + "</label>";
+      if (!s.done && !s.weight && !s.reps && !s.time && !s.note) continue;
+      const bits = [];
+      if (s.weight) bits.push(s.weight);
+      if (s.reps) bits.push(s.reps + (ex.perSide ? "/side" : "r"));
+      if (s.time) bits.push(s.time + "s");
+      if (s.note) bits.push(s.note);
+      if (s.done && !bits.length) bits.push("done");
+      compact += '<div class="set" data-act="focus-set" data-set="' + i + '">';
+      compact += '<div class="set-head"><span>Set ' + (i + 1) + "</span>";
+      if (s.done) compact += "<span>logged</span>";
+      compact += "</div>";
+      if (bits.length) compact += '<p class="hint">' + esc(bits.join(" · ")) + "</p>";
+      compact += "</div>";
+    }
+    if (compact) {
+      html += "<h3>Logged</h3>" + compact;
+    }
+    html += "</div>";
+
+    const i = state.currentSet;
+    const s = sets[i] || {};
+    html += '<div class="pin-log">';
+    html += '<div class="set is-current" data-act="focus-set" data-set="' + i + '">';
+    html += '<div class="set-head"><span>Set ' + (i + 1) + " · now</span>";
+    if (s.done) html += "<span>logged</span>";
+    html += "</div>";
+    if (ex.log === "done") {
+      html +=
+        '<button type="button" class="btn btn-ghost" data-act="mark-done" data-set="' + i + '">' +
+        (s.done ? "Round done ✓" : "Mark this round done") + "</button>";
+    } else {
+      html += '<div class="set-grid">';
+      if (ex.log === "weight-reps" || ex.log === "weight-time") {
+        html += '<label class="field"><span>' + esc(ex.weightLabel || "Weight (lb)") + "</span>" +
+          stepperHtml(key, i, "weight", s.weight || "", 5, i === 0 && last ? last : "0") + "</label>";
         }
         if (ex.log === "weight-reps") {
           html += '<label class="field"><span>Reps' + (ex.perSide ? " / side" : "") + "</span>" +
-            stepperHtml(key, i, "reps", s.reps, 1, String(ex.reps).split(/[^\d]/)[0] || "8") + "</label>";
+            stepperHtml(key, i, "reps", s.reps || "", 1, String(ex.reps).split(/[^\d]/)[0] || "8") + "</label>";
         }
         if (ex.log === "time" || ex.log === "weight-time") {
           html += '<label class="field"><span>Seconds</span>' +
-            stepperHtml(key, i, "time", s.time, 5, String(ex.hold || 30)) + "</label>";
-        }
-        html += "</div>";
-        if (ex.note) {
-          html +=
-            '<label class="field" style="margin-top:8px"><span>What you used</span><input type="text" data-act="log" data-ex="' +
-            key + '" data-set="' + i + '" data-field="note" value="' + esc(s.note || "") +
-            '" placeholder="machine / lunges / skip"></label>';
-        }
+            stepperHtml(key, i, "time", s.time || "", 5, String(ex.hold || 30)) + "</label>";
       }
       html += "</div>";
+      if (ex.note) {
+        html +=
+          '<label class="field" style="margin-top:8px"><span>What you used</span><input type="text" data-act="log" data-ex="' +
+          key + '" data-set="' + i + '" data-field="note" value="' + esc(s.note || "") +
+          '" placeholder="machine / lunges / skip"></label>';
+      }
     }
+    html += "</div>";
 
     if (ex.hold && (ex.log === "time" || ex.log === "weight-time")) {
       if (state.hold) {
@@ -984,8 +1012,10 @@
         : state.exIndex === list.length - 1 ? "Finish workout" : "Next exercise") +
       "</button>";
     html += '<button type="button" class="btn btn-danger" data-act="skip-ex">' + (ex.optional ? "Skip" : "Skip exercise") + "</button>";
-    html += "</div>";
+    html += "</div></div>";
     $app.innerHTML = html;
+    const main = $app.querySelector(".ex-main");
+    if (main) main.scrollTop = 0;
   }
 
   function circuitKey(exId) {
@@ -1323,7 +1353,8 @@
     const list = currentExerciseList();
     if (!list[state.exIndex]) return;
     const exId = circuitKey(list[state.exIndex]);
-    writeSet(state.selectedDate, exId, state.currentSet, "done", true);
+    const idx = state.currentSet;
+    writeSet(state.selectedDate, exId, idx, "done", true);
   }
 
   function logSetAndRest() {
