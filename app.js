@@ -21,3 +21,31 @@
     steps.push({ label: "Easy cooldown", sec: 120, hard: false });
     return steps;
   })();
+
+  const state = {
+    view: "home",
+    selectedDate: (function () { var t = startOfDay(new Date()); return t < WEEK1 ? new Date(WEEK1) : t; })(),
+    satChoice: null,
+    rideStep: 0,
+    exIndex: 0,
+    round: 0,
+    currentSet: 0,
+    rest: null,
+    hold: null,
+    interval: null,
+    mobIndex: 0,
+    calMonth: null,
+    showCal: false,
+    leaveKind: null,
+    leaveReturn: null
+  };
+
+  let restTimer = null;
+  let holdTimer = null;
+  let intervalTimer = null;
+  let audioCtx = null;
+  let authErr = "";
+  let wuTapAt = 0;
+
+  const $app = document.getElementById("app");
+  const $overlay = document.getElementById("rest-overlay");
