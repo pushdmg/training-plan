@@ -1,9 +1,10 @@
-const CACHE = "botfit-v5";
+const CACHE = "botfit-v6";
 const ASSETS = [
   "./",
   "./index.html",
   "./styles.css",
   "./app.js",
+  "./config.js",
   "./data.js",
   "./manifest.json",
   "./icon.svg"
