@@ -74,6 +74,19 @@ body:has(#app.has-dock) { height: 100%; overflow: hidden; }
   -webkit-overflow-scrolling: touch;
   padding-bottom: 12px;
 }
+.lift-still {
+  width: 100%;
+  border-radius: var(--radius);
+  background: #000;
+  overflow: hidden;
+  touch-action: pan-y;
+  margin: 0 0 10px;
+}
+.lift-still svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
 
 .topbar {
   display: flex;

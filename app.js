@@ -191,7 +191,8 @@
       status: null,
       reason: null,
       satChoice: null,
-      highStress: false
+      highStress: false,
+      startedLifts: {}
     };
   }
   function loadAll() {
@@ -246,6 +247,25 @@
   }
   function isLoggedSet(s) {
     return !!(s && s.logged === true && setHasValue(s));
+  }
+  function isLiftStarted(log, key) {
+    if (!log || !key) return false;
+    const map = log.startedLifts;
+    if (map && typeof map === "object" && map[key]) return true;
+    const sets = (log.exercises && log.exercises[key]) || [];
+    for (let i = 0; i < sets.length; i++) {
+      if (isLoggedSet(sets[i])) return true;
+      if (sets[i] && sets[i].done === true) return true;
+    }
+    return false;
+  }
+  function markLiftStarted(key) {
+    if (!key) return;
+    patchDay(state.selectedDate, function (log) {
+      if (!log.startedLifts || typeof log.startedLifts !== "object") log.startedLifts = {};
+      log.startedLifts[key] = true;
+    });
+    scheduleSync(state.selectedDate);
   }
   function liftBaseId(exId) {
     return String(exId || "").split("::")[0];
@@ -1601,10 +1621,18 @@
 
     html += "<h2>" + esc(ex.name) + "</h2>";
     html += '<div class="where"><span class="pin">USE</span><div>' + esc(ex.where) + "</div></div>";
+    html += liftStillHtml(exId);
     html += "<h3>Setup</h3><div class=\"card step-copy\"><p>" + esc(ex.setup) + "</p></div>";
     html += "<h3>Form cues</h3><ul class=\"cues\">";
-    ex.cues.forEach(function (c) { html += "<li>" + esc(c) + "</li>"; });
+    (ex.teachCues || []).forEach(function (c) { html += "<li>" + esc(c) + "</li>"; });
     html += "</ul>";
+    if (!isLiftStarted(log, key)) {
+      html += "</div>";
+      html +=
+        '<div class="pin-log"><div class="actions"><button type="button" class="btn btn-primary" data-act="start-lift">Start</button></div></div>';
+      $app.innerHTML = html;
+      return;
+    }
     if (ex.safety) html += '<div class="note">' + esc(ex.safety) + "</div>";
     if (week <= 4 && !ex.optional && ex.log !== "done") {
       html += '<div class="note">Leave 2–3 reps in the tank. No failure weeks 1–4.</div>';
@@ -1713,6 +1741,14 @@
       return exId + "::r" + state.round;
     }
     return exId;
+  }
+
+  function liftStillHtml(exId) {
+    const ex = D.exercises[exId] || {};
+    const draw = (window.liftStill && window.liftStill(exId)) || "";
+    let html = '<div class="lift-still">' + draw + "</div>";
+    if (ex.teachShow) html += '<p class="hint lift-still-cap">' + esc(ex.teachShow) + "</p>";
+    return html;
   }
 
   function renderRide() {
@@ -2317,6 +2353,9 @@
       state.exIndex = 0;
       state.currentSet = 0;
       state.view = "exercise";
+      render();
+    } else if (act === "start-lift") {
+      markLiftStarted(circuitKey(currentExerciseList()[state.exIndex]));
       render();
     } else if (act === "ex-back") {
       if (state.exIndex > 0) { state.exIndex -= 1; state.currentSet = 0; }

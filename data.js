@@ -644,6 +644,221 @@ window.BOTFIT.exercises = {
   }
 };
 
+(function () {
+  var teach = {
+    "hs-chest-press": [
+      "Seated, handles at mid-chest, feet flat, blades on the pad.",
+      "Handles at mid-chest, not neck.",
+      "Blades stay on the pad.",
+      "Stop short of slamming the elbows straight."
+    ],
+    "incline-db-press": [
+      "Bench ~30°, bells at the sides of the shoulders, wrists stacked over elbows.",
+      "Bench one or two notches up, not a steep shoulder press.",
+      "Press up and slightly in.",
+      "Low back stays on the bench."
+    ],
+    "sa-cable-press": [
+      "One knee down, cable behind, handle at chest, tall torso.",
+      "Get tall before you press.",
+      "Press straight out.",
+      "Do not lean or twist."
+    ],
+    "db-lateral": [
+      "Standing, soft elbows, bells just below shoulder height (not overhead).",
+      "Lighter than you think.",
+      "Stop just below the shoulders.",
+      "Do not shrug."
+    ],
+    "triceps-pressdown": [
+      "Pulley high, elbows pinned to ribs, forearms only moving.",
+      "Elbows glued to your sides.",
+      "Only the forearms move.",
+      "If elbows flare, go lighter."
+    ],
+    pallof: [
+      "Stand sideways to the tower, handle at sternum, arms pressed straight out, hips square.",
+      "The cable wants to twist you. Don’t let it.",
+      "Hands stay at chest height.",
+      "Hips stay square."
+    ],
+    "front-plank": [
+      "Forearms down, body in one line, hips neither sagged nor piked.",
+      "Squeeze glutes.",
+      "Ribs down.",
+      "If hips pike, you’re hiding."
+    ],
+    "assisted-pullup": [
+      "Knees on the pad, hands on the grips, elbows finishing down/back (not a shrug).",
+      "Pick help that lets 6 clean reps.",
+      "Elbows to back pockets.",
+      "Don’t yank with the arms."
+    ],
+    "seated-row": [
+      "Seated, chest up, handle at the ribs, not a huge lean-back.",
+      "Chest up.",
+      "Pull to the ribs.",
+      "Don’t yank."
+    ],
+    "db-rdl": [
+      "Soft knees, hips back, bells sliding down the thighs, flat back. Stop mid-shin.",
+      "Butt back, like closing a car door.",
+      "Soft knees, freeze them.",
+      "Stop mid-shin."
+    ],
+    "sa-cable-row": [
+      "Staggered stance, one handle, elbow finishing by the hip.",
+      "Pull the elbow to the hip.",
+      "Don’t twist the torso.",
+      "Other hand can brace."
+    ],
+    "face-pull": [
+      "Rope at face height, pull to the ears, hands rotating out at the end.",
+      "Rope at face height.",
+      "Pull to the ears.",
+      "Finish with the hands opening out."
+    ],
+    "db-curl": [
+      "Standing, elbows at the ribs, bells at the shoulders.",
+      "Elbows stay put.",
+      "No swing.",
+      "Lower slower than you lift."
+    ],
+    suitcase: [
+      "One heavy bell in one hand, walking tall, other side not leaning.",
+      "Walk tall.",
+      "Don’t lean away from the weight.",
+      "Switch sides each trip."
+    ],
+    goblet: [
+      "Kettlebell at the chest, elbows in, sitting between the feet.",
+      "Bell at the chest.",
+      "Sit between your feet.",
+      "Chest up."
+    ],
+    "split-squat": [
+      "One foot forward, back knee under the hip, torso tall.",
+      "Most of the work is the front leg.",
+      "Torso tall.",
+      "Don’t slam the back knee."
+    ],
+    "step-up": [
+      "Whole foot on the bench, standing up through the heel, other foot not pushing off hard.",
+      "Whole foot on the bench.",
+      "Drive the heel.",
+      "Control the way down."
+    ],
+    "leg-machine": [
+      "Seated — walking lunges if it isn’t clearly a leg extension or curl.",
+      "If you don’t know the machine, skip it and lunge.",
+      "Light, slow lower.",
+      "Don’t fight a mystery stack."
+    ],
+    woodchop: [
+      "Cable high to low (or mid), rotating through the hips, arms long.",
+      "Turn the hips, not just the arms.",
+      "Finish stacked over the feet.",
+      "Both sides."
+    ],
+    "side-plank": [
+      "On one forearm, body in a straight line, hips up.",
+      "Hips up.",
+      "Squeeze the downside glute.",
+      "Don’t roll forward."
+    ],
+    "lat-pulldown": [
+      "Pulldown bar to upper chest, or assisted station with a neutral grip.",
+      "Pull to the upper chest.",
+      "Elbows down.",
+      "Don’t lean way back."
+    ],
+    "chest-row": [
+      "Chest on an incline bench, bells hanging, row to the hip.",
+      "Chest stays on the pad.",
+      "Row to the hip.",
+      "Squeeze, then lower."
+    ],
+    "rear-delt": [
+      "Cables crossed or handles out, arms almost straight, opening to a T.",
+      "Soft elbows.",
+      "Open to a T.",
+      "Don’t shrug."
+    ],
+    "assisted-dip": [
+      "Dip (upright, slight forward lean) or hands on a bench, body in a line.",
+      "If the dip hurts the shoulders, do the bench push-up.",
+      "Don’t sink past a comfortable bottom.",
+      "Stay in a line."
+    ],
+    "hammer-curl": [
+      "Bells vertical (thumbs up), elbows at the ribs.",
+      "Thumbs up.",
+      "Elbows still.",
+      "No swing."
+    ],
+    "cable-er": [
+      "Elbow pinned at the side, very light, rotating the forearm out.",
+      "Very light.",
+      "Elbow glued to your side.",
+      "This is tissue prep, not a max."
+    ],
+    "db-shrug": [
+      "Standing, bells at the sides, shoulders up toward the ears and down.",
+      "Up and down.",
+      "Don’t roll the shoulders.",
+      "Pause at the top."
+    ],
+    "neck-iso": [
+      "Hand on the forehead / side / back, head not actually moving.",
+      "Gentle pressure only.",
+      "10 seconds.",
+      "This is not a neck max."
+    ],
+    "kb-deadlift": [
+      "Bell between the feet, hips back, flat back, standing up tall.",
+      "Same hinge as the RDL.",
+      "Do not use Monday’s chest-press weight.",
+      "Stand tall at the top."
+    ],
+    "farmer-carry": [
+      "A bell in each hand, walking tall.",
+      "Tall.",
+      "Fast short steps.",
+      "Put them down like they’re heavy, not a drop."
+    ],
+    "db-press-circuit": [
+      "Bench ~30°, bells at the sides of the shoulders, wrists stacked over elbows.",
+      "Press up and slightly in.",
+      "Wrists stacked.",
+      "Low back stays put."
+    ],
+    "cable-row-circuit": [
+      "Seated, chest up, handle at the ribs, not a huge lean-back.",
+      "Chest up.",
+      "Pull to the ribs.",
+      "Don’t yank."
+    ],
+    "goblet-circuit": [
+      "Kettlebell at the chest, elbows in, sitting between the feet.",
+      "Bell at the chest.",
+      "Sit between your feet.",
+      "Chest up."
+    ],
+    "opt-spin": [
+      "On the bike, easy gear, talk pace.",
+      "Easy gear.",
+      "Talk pace.",
+      "5 min."
+    ]
+  };
+  Object.keys(teach).forEach(function (id) {
+    var ex = window.BOTFIT.exercises[id];
+    if (!ex) return;
+    ex.teachShow = teach[id][0];
+    ex.teachCues = teach[id].slice(1);
+  });
+})();
+
 window.BOTFIT.mobility = [
   {
     id: "walk",
