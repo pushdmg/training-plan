@@ -585,6 +585,15 @@ input, textarea, .stepper, .stepper input, .set-grid, .set, label.field, .recap-
 }
 .seg.rpe { grid-template-columns: repeat(5, 1fr); }
 
+.cal-toggle {
+  display: block;
+  background: transparent;
+  color: var(--muted);
+  min-height: 44px;
+  padding: 0 4px;
+  margin: 0 0 14px;
+  font-weight: 700;
+}
 .month { margin: 0 0 20px; }
 .month-head {
   display: flex;

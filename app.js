@@ -31,7 +31,8 @@
     hold: null,
     interval: null,
     mobIndex: 0,
-    calMonth: null
+    calMonth: null,
+    showCal: false
   };
 
   let restTimer = null;
@@ -573,8 +574,8 @@
   function monthHtml(selected) {
     const today = startOfDay(new Date());
     const all = loadAll();
-    const y = state.calMonth ? state.calMonth.y : selected.getFullYear();
-    const m = state.calMonth ? state.calMonth.m : selected.getMonth();
+    const y = state.calMonth && state.calMonth.y != null ? state.calMonth.y : selected.getFullYear();
+    const m = state.calMonth && state.calMonth.m != null ? state.calMonth.m : selected.getMonth();
     const first = new Date(y, m, 1);
     const label = first.toLocaleDateString(undefined, { month: "long", year: "numeric" });
     const startPad = weekdayMon0(first);
@@ -718,7 +719,7 @@
   function topbar(week) {
     return (
       '<div class="topbar">' +
-      '<div class="brand"><img src="icon-192.png" alt="">BotFit</div>' +
+      '<div class="brand"><img src="icon-192.png" alt="" onerror="this.onerror=null;this.src=\'icon.svg\'">BotFit</div>' +
       '<div class="week-pill">Week ' + week + (week === 8 ? " · deload" : week === 1 ? " · learn the room" : "") + "</div>" +
       "</div>"
     );
@@ -784,7 +785,11 @@
     body += "<h1>" + esc(meta.title) + "</h1>";
     body += '<p class="lede">' + esc(meta.blurb) + "</p>";
     body += pickerHtml(date);
-    body += monthHtml(date);
+    body +=
+      '<button type="button" class="cal-toggle" data-act="toggle-cal">' +
+      (state.showCal ? "Hide calendar" : "Show calendar") +
+      "</button>";
+    if (state.showCal) body += monthHtml(date);
     const adj = getAdjust(iso(date));
     if (meta.type === "lift") {
       body += '<div class="note"><strong>This week.</strong> ' + nSets + " sets per exercise. " + esc(intensity);
@@ -1331,8 +1336,12 @@
     } catch (e) {}
   }
 
+  let lastRenderedView = null;
   function render() {
     persistUI();
+    const prevView = lastRenderedView;
+    const sameView = prevView === state.view;
+    const keepY = sameView && state.view === "home" ? window.scrollY : 0;
     if (state.view === "home") renderHome();
     else if (state.view === "warmup") renderWarmup();
     else if (state.view === "exercise") renderExercise();
@@ -1342,8 +1351,10 @@
     else if (state.view === "off") renderMobility();
     else if (state.view === "done") renderDone();
     else renderHome();
+    lastRenderedView = state.view;
     renderOverlay();
-    window.scrollTo(0, 0);
+    if (!sameView) window.scrollTo(0, 0);
+    else if (state.view === "home") window.scrollTo(0, keepY);
   }
 
   function startSession() {
@@ -1439,13 +1450,25 @@
     if (!t) return;
     const act = t.getAttribute("data-act");
     if (act === "pick-day") {
-      state.selectedDate = parseISO(t.getAttribute("data-iso"));
+      if (!t.closest(".picker, .month-grid")) return;
+      const nextIso = t.getAttribute("data-iso");
+      if (!nextIso) return;
+      state.selectedDate = parseISO(nextIso);
       state.calMonth = {
         y: state.selectedDate.getFullYear(),
         m: state.selectedDate.getMonth()
       };
       state.view = "home";
       state.satChoice = null;
+      render();
+    } else if (act === "toggle-cal") {
+      state.showCal = !state.showCal;
+      if (state.showCal && !state.calMonth) {
+        state.calMonth = {
+          y: state.selectedDate.getFullYear(),
+          m: state.selectedDate.getMonth()
+        };
+      }
       render();
     } else if (act === "toggle-stress") {
       patchDay(state.selectedDate, function (log) { log.highStress = !log.highStress; });
