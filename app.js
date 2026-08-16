@@ -141,9 +141,24 @@
     const a = loadAuth();
     return !!(a && a.access_token && a.user && a.user.id);
   }
+  function allowedEmail() {
+    return String((sbCfg() && sbCfg().allowedEmail) || "jon@pushdmg.com").toLowerCase();
+  }
+  function cleanEmail(email) {
+    return String(email || "")
+      .replace(/[\u200B-\u200D\u2060\uFEFF\u00A0]/g, "")
+      .trim()
+      .toLowerCase();
+  }
+  function loginEmail(email) {
+    return cleanEmail(email) || allowedEmail();
+  }
   function emailAllowed(email) {
-    const want = String((sbCfg() && sbCfg().allowedEmail) || "jon@pushdmg.com").toLowerCase();
-    return String(email || "").trim().toLowerCase() === want;
+    return cleanEmail(email) === allowedEmail();
+  }
+  function sessionEmailOk(email) {
+    const cleaned = cleanEmail(email);
+    return !cleaned || emailAllowed(email);
   }
   function athleteId() {
     const a = loadAuth();
@@ -979,7 +994,7 @@
     const emailEl = document.getElementById("auth-email");
     const passEl = document.getElementById("auth-pass");
     return {
-      email: emailEl ? String(emailEl.value || "").trim() : "",
+      email: loginEmail(emailEl ? emailEl.value : ""),
       password: passEl ? String(passEl.value || "") : ""
     };
   }
@@ -1035,7 +1050,7 @@
     authRequest("/token?grant_type=password", { email: form.email, password: form.password }).then(function (res) {
       const data = res.json || {};
       if (data.access_token && data.user && data.user.id) {
-        if (!emailAllowed(data.user.email)) {
+        if (!sessionEmailOk(data.user.email)) {
           authErr = "This login is for Jon only.";
           clearAuth();
           renderLogin();
@@ -1063,7 +1078,7 @@
     authRequest("/signup", { email: form.email, password: form.password }).then(function (res) {
       const data = res.json || {};
       if (data.access_token && data.user && data.user.id) {
-        if (!emailAllowed(data.user.email)) {
+        if (!sessionEmailOk(data.user.email)) {
           authErr = "This login is for Jon only.";
           clearAuth();
           renderLogin();
@@ -1076,7 +1091,7 @@
         return authRequest("/token?grant_type=password", { email: form.email, password: form.password }).then(function (tokenRes) {
           const tokenData = tokenRes.json || {};
           if (tokenData.access_token && tokenData.user && tokenData.user.id) {
-            if (!emailAllowed(tokenData.user.email)) {
+            if (!sessionEmailOk(tokenData.user.email)) {
               authErr = "This login is for Jon only.";
               clearAuth();
               renderLogin();
@@ -1106,7 +1121,7 @@
   function renderLogin() {
     setDock(false);
     const form = {
-      email: (document.getElementById("auth-email") || {}).value || "",
+      email: loginEmail((document.getElementById("auth-email") || {}).value || ""),
       password: (document.getElementById("auth-pass") || {}).value || ""
     };
     let html = '<div class="login">';
