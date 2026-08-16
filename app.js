@@ -146,7 +146,7 @@
     saveAll(all);
   }
   function blankSet() {
-    return { weight: "", reps: "", time: "", note: "", done: false };
+    return { weight: "", reps: "", time: "", note: "", done: false, logged: false };
   }
   function isolateSet(row) {
     if (!row || typeof row !== "object") return blankSet();
@@ -155,52 +155,15 @@
       reps: row.reps == null ? "" : row.reps,
       time: row.time == null ? "" : row.time,
       note: row.note == null ? "" : row.note,
-      done: row.done === true
+      done: row.done === true,
+      logged: row.logged === true
     };
   }
   function repsPlaceholder(ex) {
     return String((ex && ex.reps) || "").split(/[^\d]/)[0] || "8";
   }
-  function hasOwnLoggedPayload(row) {
-    if (!row) return false;
-    if (String(row.weight || "").trim()) return true;
-    if (String(row.time || "").trim()) return true;
-    return false;
-  }
-  function markMap(log, exId, create) {
-    if (!log.loggedIdx) {
-      if (!create) return null;
-      log.loggedIdx = {};
-    }
-    if (!log.loggedIdx[exId]) {
-      if (!create) return null;
-      log.loggedIdx[exId] = {};
-    }
-    return log.loggedIdx[exId];
-  }
-  function stampLoggedIdx(date, exId, idx) {
-    patchDay(date, function (log) {
-      const map = markMap(log, exId, true);
-      map[String(idx)] = true;
-    });
-  }
-  function wasLoggedIdx(date, exId, idx) {
-    const log = dayLog(date);
-    const map = markMap(log, exId, false);
-    return !!(map && map[String(idx)]);
-  }
-  function isSetLogged(row, date, exId, idx) {
-    if (!row || row.done !== true) return false;
-    if (hasOwnLoggedPayload(row)) return true;
-    const baseId = String(exId).split("::")[0];
-    const ex = D.exercises[baseId];
-    return !!(ex && ex.log === "done" && wasLoggedIdx(date, exId, idx));
-  }
-  function sanitizeOpenSet(date, exId, idx) {
+  function sanitizeUpcomingSet(date, exId, idx) {
     if (!exId || !isFinite(idx) || idx < 0) return;
-    const baseId = String(exId).split("::")[0];
-    const ex = D.exercises[baseId];
-    const ph = repsPlaceholder(ex);
     patchDay(date, function (log) {
       if (!Array.isArray(log.exercises[exId])) log.exercises[exId] = [];
       const sets = log.exercises[exId];
@@ -216,27 +179,9 @@
         }
       }
       const row = isolated[idx];
-      const stamped = !!(log.loggedIdx && log.loggedIdx[exId] && log.loggedIdx[exId][String(idx)]);
-      const own = hasOwnLoggedPayload(row);
-      const independently = own || (ex && ex.log === "done" && stamped);
-      if (idx > 0 && !stamped) {
-        const prev = isolated[idx - 1];
-        if (
-          prev &&
-          row.done === true &&
-          prev.done === true &&
-          row.weight === prev.weight &&
-          row.reps === prev.reps &&
-          row.time === prev.time
-        ) {
-          isolated[idx] = blankSet();
-          log.exercises[exId] = isolated;
-          return;
-        }
-      }
-      if (row.done === true && !independently) {
+      if (row.logged !== true) {
         row.done = false;
-        if (String(row.reps) === ph) row.reps = "";
+        row.logged = false;
       }
       isolated[idx] = isolateSet(row);
       log.exercises[exId] = isolated;
@@ -246,7 +191,7 @@
     state.currentSet += 1;
     const list = currentExerciseList();
     if (!list[state.exIndex]) return;
-    sanitizeOpenSet(state.selectedDate, circuitKey(list[state.exIndex]), state.currentSet);
+    sanitizeUpcomingSet(state.selectedDate, circuitKey(list[state.exIndex]), state.currentSet);
   }
   function lastWeight(exId, exceptDate) {
     const all = loadAll();
@@ -302,11 +247,8 @@
       const row = isolateSet(log.exercises[exId][i]);
       if (field === "done") {
         row.done = value === true || value === "true";
-        if (row.done) {
-          const map = markMap(log, exId, true);
-          map[String(i)] = true;
-        }
-      } else {
+        if (row.done) row.logged = true;
+      } else if (field !== "logged") {
         row[field] = value;
       }
       log.exercises[exId][i] = isolateSet(row);
@@ -969,7 +911,8 @@
     const items = D.warmup;
     let done = 0;
     items.forEach(function (it) { if (log.warmup[it.id]) done++; });
-    let html = topbar(week);
+    let html = '<div class="ex-main">';
+    html += topbar(week);
     html +=
       '<div class="navrow"><button type="button" class="back" data-act="home">← Home</button><div class="progress">WARM-UP · ' +
       done + "/" + items.length + "</div></div>";
@@ -992,8 +935,9 @@
         }
       }
     });
+    html += "</div>";
     html +=
-      '<div class="pin-log pin-log-simple"><div class="actions"><button type="button" class="btn btn-primary" data-act="wu-continue">Next — start lifts</button>' +
+      '<div class="pin-log"><div class="actions"><button type="button" class="btn btn-primary" data-act="wu-continue">Next — start lifts</button>' +
       '<button type="button" class="btn btn-danger" data-act="wu-continue">Skip remaining</button></div></div>';
     $app.innerHTML = html;
   }
@@ -1033,7 +977,7 @@
     const key = circuitKey(exId);
     let sets = ensureSets(date, key, nSets);
     if (state.currentSet >= nSets) state.currentSet = nSets - 1;
-    sanitizeOpenSet(date, key, state.currentSet);
+    sanitizeUpcomingSet(date, key, state.currentSet);
     sets = ensureSets(date, key, nSets);
     const last = lastWeight(isCircuit ? key : exId, iso(date));
 
@@ -1078,7 +1022,7 @@
     for (let i = 0; i < nSets; i++) {
       if (i === state.currentSet) continue;
       const s = isolateSet(sets[i]);
-      if (!isSetLogged(s, date, key, i)) continue;
+      if (s.logged !== true) continue;
       const bits = [];
       if (s.weight) bits.push(s.weight);
       if (s.reps) bits.push(s.reps + (ex.perSide ? "/side" : "r"));
@@ -1096,18 +1040,17 @@
 
     const i = state.currentSet;
     const s = isolateSet(sets[i]);
-    const loggedNow = isSetLogged(s, date, key, i);
     const suggest = lastWeightBefore(key, date, i);
-    const weightShow = s.weight || (!loggedNow && suggest) || "";
+    const weightShow = s.weight || (s.logged !== true && suggest) || "";
     html += '<div class="pin-log">';
     html += '<div class="set is-current" data-act="focus-set" data-set="' + i + '">';
     html += '<div class="set-head"><span>Set ' + (i + 1) + " · now</span>";
-    if (loggedNow) html += "<span>logged</span>";
+    if (s.logged === true) html += "<span>logged</span>";
     html += "</div>";
     if (ex.log === "done") {
       html +=
         '<button type="button" class="btn btn-ghost" data-act="mark-done" data-set="' + i + '">' +
-        (loggedNow ? "Round done ✓" : "Mark this round done") + "</button>";
+        (s.logged === true ? "Round done ✓" : "Mark this round done") + "</button>";
     } else {
       html += '<div class="set-grid">';
       if (ex.log === "weight-reps" || ex.log === "weight-time") {
@@ -1165,7 +1108,6 @@
     $app.innerHTML = html;
     const main = $app.querySelector(".ex-main");
     if (main) main.scrollTop = 0;
-    window.scrollTo(0, 0);
   }
 
   function circuitKey(exId) {
@@ -1216,7 +1158,8 @@
     const log = dayLog(date);
     const kind = dayMeta(date).type === "off" ? "sun" : "wed";
     const items = mobilityItems(kind);
-    let html = topbar(week);
+    let html = '<div class="ex-main">';
+    html += topbar(week);
     html +=
       '<div class="navrow"><button type="button" class="back" data-act="home">← Home</button><div class="progress">MOBILITY</div></div>';
     html += "<h2>" + (kind === "sun" ? "Off — walk or mobility" : "Short mobility") + "</h2>";
@@ -1238,7 +1181,8 @@
       html += '<div class="timer-face"><div class="clock">' + fmtClock(left) + '</div><div class="sub">Hold</div></div>';
       html += '<div class="actions"><button type="button" class="btn btn-ghost" data-act="stop-hold">Stop</button></div>';
     }
-    html += '<div class="pin-log pin-log-simple"><div class="actions"><button type="button" class="btn btn-primary" data-act="finish">Done</button></div></div>';
+    html += "</div>";
+    html += '<div class="pin-log"><div class="actions"><button type="button" class="btn btn-primary" data-act="finish">Done</button></div></div>';
     $app.innerHTML = html;
   }
 
@@ -1464,14 +1408,8 @@
     renderOverlay();
     if (!sameView) window.scrollTo(0, 0);
     else if (state.view === "home") window.scrollTo(0, keepY);
-    const dock = $app.querySelector(".pin-log");
-    if (dock) {
-      $app.classList.add("has-dock");
-      $app.style.setProperty("--dock-space", dock.offsetHeight + "px");
-    } else {
-      $app.classList.remove("has-dock");
-      $app.style.removeProperty("--dock-space");
-    }
+    const main = $app.querySelector(".ex-main");
+    if (main && state.view !== "home") main.scrollTop = 0;
   }
 
   function startSession() {
@@ -1536,7 +1474,6 @@
     const loggedIdx = state.currentSet;
     flushVisibleSetFields(loggedIdx);
     writeSet(state.selectedDate, exId, loggedIdx, "done", true);
-    stampLoggedIdx(state.selectedDate, exId, loggedIdx);
   }
 
   function logSetAndRest() {
@@ -1662,7 +1599,6 @@
       const loggedIdx = Number(t.getAttribute("data-set"));
       const exId = circuitKey(currentExerciseList()[state.exIndex]);
       writeSet(state.selectedDate, exId, loggedIdx, "done", true);
-      stampLoggedIdx(state.selectedDate, exId, loggedIdx);
       render();
     } else if (act === "log-set") {
       logSetAndRest();
