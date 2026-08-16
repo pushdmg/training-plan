@@ -639,7 +639,7 @@
         "</span><div><b>" + esc(it.title) + "</b><p>" + esc(it.detail) + "</p></div></button>";
       if (it.timer) {
         html += '<div class="actions"><button type="button" class="btn btn-ghost" data-act="start-hold" data-sec="' +
-          it.timer + '">Start ' + it.timer + "s</button></div>';
+          it.timer + '">Start ' + it.timer + "s</button></div>";
       }
     });
     if (state.hold) {
@@ -1070,6 +1070,16 @@
     navigator.serviceWorker.register("sw.js").catch(function () {});
   }
 
-  restoreUI();
-  render();
+  try {
+    restoreUI();
+    render();
+  } catch (err) {
+    var msg = (err && err.message) ? err.message : String(err);
+    if ($app) {
+      $app.innerHTML = '<div class="lede" style="padding:8px 0"><b>BotFit hit an error.</b><p>' +
+        String(msg).replace(/&/g,'&amp;').replace(/</g,'&lt;') +
+        '</p><p>Hard-refresh, or tell Devster.</p></div>';
+    }
+    throw err;
+  }
 })();
