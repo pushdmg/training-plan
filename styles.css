@@ -8,11 +8,11 @@
   --text: #ffffff;
   --muted: #a3a3a3;
   --dim: #737373;
-  --amber: #00c805;
-  --amber-dim: #0a7a12;
-  --amber-bg: #05240a;
-  --green: #00c805;
-  --green-bg: #05240a;
+  --amber: #ccff00;
+  --amber-dim: #7f971a;
+  --amber-bg: #1c180c;
+  --green: #ccff00;
+  --green-bg: #1c180c;
   --red: #ff5a5a;
   --shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
   --tap: 56px;
@@ -111,7 +111,7 @@ h3 {
 .picker button.is-today { border-color: var(--amber-dim); color: var(--text); }
 .picker button.is-on {
   background: var(--amber);
-  color: #001a04;
+  color: #000000;
   border-color: var(--amber);
 }
 .picker button.is-done::after {
@@ -123,7 +123,7 @@ h3 {
   background: var(--green);
   margin: 4px auto 0;
 }
-.picker button.is-on.is-done::after { background: #001a04; }
+.picker button.is-on.is-done::after { background: #000000; }
 
 .card {
   background: var(--card);
@@ -170,7 +170,7 @@ h3 {
 .toggle.is-on .box {
   background: var(--amber);
   border-color: var(--amber);
-  color: #001a04;
+  color: #000000;
   font-weight: 800;
 }
 .toggle span { font-size: 16px; }
@@ -186,7 +186,7 @@ h3 {
   letter-spacing: 0.02em;
   padding: 0 16px;
 }
-.btn-primary { background: var(--amber); color: #001a04; }
+.btn-primary { background: var(--amber); color: #000000; }
 .btn-primary:active { filter: brightness(0.92); }
 .btn-ghost {
   background: var(--card-2);
@@ -346,10 +346,10 @@ textarea { min-height: 72px; font-size: 16px; font-weight: 500; resize: vertical
   margin-top: 2px;
   font-weight: 800;
 }
-.check.is-on .box { background: var(--green); border-color: var(--green); color: #001a04; }
+.check.is-on .box { background: var(--green); border-color: var(--green); color: #000000; }
 .check b { display: block; margin-bottom: 4px; }
 .check p { margin: 0; color: var(--muted); font-size: 15px; }
-.check.is-on p { color: #b7f5c0; }
+.check.is-on p { color: #e8f5a0; }
 
 .choice {
   width: 100%;
@@ -431,7 +431,7 @@ textarea { min-height: 72px; font-size: 16px; font-weight: 500; resize: vertical
   height: 72px;
   border-radius: 50%;
   background: var(--green);
-  color: #001a04;
+  color: #000000;
   display: grid;
   place-items: center;
   font-size: 36px;
@@ -482,5 +482,5 @@ textarea { min-height: 72px; font-size: 16px; font-weight: 500; resize: vertical
   border: 1px solid var(--line);
   font-weight: 800;
 }
-.seg button.is-on { background: var(--amber); color: #001a04; border-color: var(--amber); }
+.seg button.is-on { background: var(--amber); color: #000000; border-color: var(--amber); }
 .tracker-label { display: block; font-weight: 800; margin: 12px 0 6px; font-size: 14px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
