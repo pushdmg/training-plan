@@ -794,11 +794,15 @@
       body += '<div class="actions"><button type="button" class="btn btn-primary" data-act="start">' + label + "</button></div>";
     } else {
       const n = meta.exercises.length;
+      const firstId = meta.exercises[0];
+      const firstLift = (D.exercises[firstId] && D.exercises[firstId].name) || "the first lift";
+      const weekday = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][jsDay(date)];
       const label = log.completed ? "View recap" : log.started && !log.completed ? "Resume session" : "Start session";
       body +=
         '<div class="card"><b>' +
         n +
-        " exercises · " + nSets + " sets</b><p>Warm-up first, then one lift per screen. Hammer Strength chest press is first on Monday. Log weight and reps as you go.</p></div>";
+        " exercises · " + nSets + " sets</b><p>Warm-up first, then one lift per screen. " +
+        esc(firstLift) + " is first on " + weekday + ". Log weight and reps as you go.</p></div>";
       body += '<div class="actions"><button type="button" class="btn btn-primary" data-act="start">' + label + "</button>";
       if (log.completed) {
         body += '<button type="button" class="btn btn-ghost" data-act="restart">Start over</button>';
