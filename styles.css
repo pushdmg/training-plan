@@ -53,11 +53,28 @@ input, textarea, select { min-width: 0; max-width: 100%; }
   padding: calc(12px + var(--safe-t)) 16px calc(24px + var(--safe-b));
   overflow-x: hidden;
 }
+#app:has(.pin-log) {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
+  padding-bottom: 0;
+}
+.ex-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
 
 .topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 12px;
   margin-bottom: 18px;
 }
@@ -85,6 +102,8 @@ input, textarea, select { min-width: 0; max-width: 100%; }
   max-width: 52%;
   text-align: right;
   white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.25;
 }
 
 .date-line { color: var(--muted); font-size: 15px; margin: 0 0 6px; }
@@ -139,6 +158,9 @@ h3 {
 }
 .picker button.is-on.is-done::after { background: #000000; }
 
+.card, .where, .cues, .note, .set, h2, .lede {
+  overflow-wrap: anywhere;
+}
 .card {
   background: var(--card);
   border: 1px solid var(--line);
@@ -477,7 +499,6 @@ textarea { min-height: 72px; font-size: 16px; font-weight: 500; resize: vertical
 .round-dot.is-done { background: var(--green); }
 
 .stepper { display: flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; }
-.stepper input { flex: 1 1 auto; min-width: 0; width: 100%; }
 .stepper button {
   flex: 0 0 48px;
   min-width: 48px;
@@ -489,7 +510,39 @@ textarea { min-height: 72px; font-size: 16px; font-weight: 500; resize: vertical
   font-weight: 800;
   color: var(--text);
 }
-.stepper input { text-align: center; font-variant-numeric: tabular-nums; }
+.stepper input {
+  flex: 1 1 0;
+  width: 0;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+input, textarea, .stepper, .stepper input, .set-grid, .set, label.field, .recap-row, .topbar, .week-pill {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.pin-log {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  flex: 0 0 auto;
+  width: auto;
+  max-width: none;
+  min-width: 0;
+  margin: 16px -16px 0;
+  background: var(--bg);
+  border-top: 1px solid var(--line);
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.45);
+  padding: 12px 16px calc(16px + var(--safe-b));
+  max-height: 75dvh;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+.pin-log .set { margin-bottom: 0; }
+.pin-log .actions { margin-top: 10px; }
+.pin-log .timer-face { padding: 8px 0 0; }
+.pin-log .timer-face .clock { font-size: 56px; }
 .seg { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-bottom: 10px; }
 .seg.two { grid-template-columns: 1fr 1fr; }
 .seg button {
@@ -583,23 +636,3 @@ textarea { min-height: 72px; font-size: 16px; font-weight: 500; resize: vertical
 }
 .month-grid button.is-on.is-done::after { background: #000000; }
 .month-empty { min-height: 40px; }
-
-
-/* Phone lock: one column, log dock stays on screen */
-.card, .note, .where, .cues, .set, label.field, .recap-row, .topbar {
-  min-width: 0;
-  max-width: 100%;
-}
-.card, .note, .where, .cues li { overflow-wrap: anywhere; }
-.pin-log {
-  position: sticky;
-  bottom: 0;
-  z-index: 5;
-  margin: 16px -16px 0;
-  padding: 12px 16px calc(12px + var(--safe-b));
-  background: var(--bg);
-  border-top: 1px solid var(--line);
-  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.45);
-}
-.pin-log .actions { margin-top: 10px; }
-.pin-log .set { margin-bottom: 0; }
