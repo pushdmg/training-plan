@@ -1,4 +1,4 @@
-const CACHE = "botfit-v7";
+const CACHE = "botfit-v8";
 const ASSETS = [
   "./",
   "./index.html",
@@ -7,7 +7,9 @@ const ASSETS = [
   "./config.js",
   "./data.js",
   "./manifest.json",
-  "./icon.svg"
+  "./icon.svg",
+  "./icon-192.png",
+  "./icon-512.png"
 ];
 
 self.addEventListener("install", (event) => {
