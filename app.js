@@ -1,1 +1,1 @@
-/* see local /workspace/botfit/app/app.js — placeholder will be replaced */
+LOAD_FROM_DISK:/workspace/botfit/app/app.js
