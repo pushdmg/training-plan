@@ -484,3 +484,85 @@ textarea { min-height: 72px; font-size: 16px; font-weight: 500; resize: vertical
 }
 .seg button.is-on { background: var(--amber); color: #000000; border-color: var(--amber); }
 .tracker-label { display: block; font-weight: 800; margin: 12px 0 6px; font-size: 14px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+
+.feel-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 0 0 16px;
+}
+.feel-btn {
+  min-height: 56px;
+  border-radius: 14px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  font-weight: 800;
+  font-size: 18px;
+}
+.feel-btn.is-on {
+  background: var(--amber);
+  color: #000000;
+  border-color: var(--amber);
+}
+.seg.rpe { grid-template-columns: repeat(5, 1fr); }
+
+.month { margin: 0 0 20px; }
+.month-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+  font-weight: 800;
+}
+.month-head button {
+  min-width: 44px;
+  min-height: 44px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--text);
+}
+.month-dow,
+.month-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+.month-dow { margin-bottom: 4px; }
+.month-dow span {
+  text-align: center;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: var(--dim);
+  text-transform: uppercase;
+}
+.month-grid button {
+  min-height: 40px;
+  border-radius: 10px;
+  background: var(--bg-2);
+  color: var(--muted);
+  border: 1px solid var(--line);
+  font-weight: 700;
+  font-size: 13px;
+}
+.month-grid button.is-today { border-color: var(--amber-dim); color: var(--text); }
+.month-grid button.is-on {
+  background: var(--amber);
+  color: #000000;
+  border-color: var(--amber);
+}
+.month-grid button.is-done::after {
+  content: "";
+  display: block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--green);
+  margin: 3px auto 0;
+}
+.month-grid button.is-on.is-done::after { background: #000000; }
+.month-empty { min-height: 40px; }
