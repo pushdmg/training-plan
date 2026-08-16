@@ -7,6 +7,8 @@
   const UI = "botfit-ui-v1";
   const ADJUST = "botfit-adjust-v1";
   const SBQ = "botfit-sb-queue";
+  const AUTH = "botfit-sb-auth";
+  const LAST = "botfit-last-session-v1";
   const WEEK1 = parseISO(D.week1Monday);
 
   const INTERVALS = (function () {
@@ -39,6 +41,8 @@
   let holdTimer = null;
   let intervalTimer = null;
   let audioCtx = null;
+  let authErr = "";
+  let wuTapAt = 0;
 
   const $app = document.getElementById("app");
   const $overlay = document.getElementById("rest-overlay");
@@ -119,6 +123,46 @@
       .replace(/"/g, "&quot;");
   }
 
+  function loadAuth() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(AUTH) || "null");
+      return raw && typeof raw === "object" ? raw : null;
+    } catch (e) {
+      return null;
+    }
+  }
+  function saveAuth(rec) {
+    try { localStorage.setItem(AUTH, JSON.stringify(rec)); } catch (e) {}
+  }
+  function clearAuth() {
+    try { localStorage.removeItem(AUTH); } catch (e) {}
+  }
+  function isAuthed() {
+    const a = loadAuth();
+    return !!(a && a.access_token && a.user && a.user.id);
+  }
+  function emailAllowed(email) {
+    const want = String((sbCfg() && sbCfg().allowedEmail) || "jon@pushdmg.com").toLowerCase();
+    return String(email || "").trim().toLowerCase() === want;
+  }
+  function athleteId() {
+    const a = loadAuth();
+    return a && a.user && a.user.id ? a.user.id : null;
+  }
+  function authBase() {
+    const c = sbCfg();
+    return c && c.supabaseUrl ? c.supabaseUrl.replace(/\/$/, "") : "";
+  }
+  function stashAuth(data) {
+    if (!data || !data.access_token || !data.user || !data.user.id) return false;
+    saveAuth({
+      access_token: data.access_token,
+      refresh_token: data.refresh_token || "",
+      user: { id: data.user.id, email: data.user.email || "" }
+    });
+    return true;
+  }
+
   let storeMem = null;
   function emptyDay() {
     return { warmup: {}, exercises: {}, completed: false, satChoice: null, highStress: false };
@@ -141,12 +185,14 @@
     const all = loadAll();
     const key = iso(date);
     if (!all[key]) {
+      if (!isAuthed()) return emptyDay();
       all[key] = emptyDay();
       saveAll(all);
     }
     return all[key];
   }
   function patchDay(date, fn) {
+    if (!isAuthed()) return;
     const all = loadAll();
     const key = iso(date);
     if (!all[key]) all[key] = emptyDay();
@@ -241,6 +287,7 @@
     return out;
   }
   function writeSet(date, exId, idx, field, value) {
+    if (!isAuthed()) return;
     const i = Number(idx);
     if (!isFinite(i) || i < 0) return;
     patchDay(date, function (log) {
@@ -343,13 +390,15 @@
   }
   function sbReady() {
     const c = sbCfg();
-    return !!(c && c.supabaseUrl && c.supabaseKey && c.athleteId);
+    return !!(c && c.supabaseUrl && c.supabaseKey && athleteId());
   }
   function sbHeaders(extra) {
     const c = sbCfg();
+    const a = loadAuth();
+    const token = a && a.access_token ? a.access_token : c.supabaseKey;
     const h = {
       apikey: c.supabaseKey,
-      Authorization: "Bearer " + c.supabaseKey,
+      Authorization: "Bearer " + token,
       "Content-Type": "application/json"
     };
     if (extra) {
@@ -397,10 +446,9 @@
     return "planned";
   }
   function sessionPayload(date, log) {
-    const c = sbCfg();
     const adj = getAdjust(iso(date));
     return {
-      athlete_id: c.athleteId,
+      athlete_id: athleteId(),
       session_date: iso(date),
       plan_week: weekNumber(date),
       session_type: sessionTypeFor(date, log),
@@ -513,7 +561,7 @@
   function queueAdjustment(source, rec, appliedOn) {
     if (!sbReady()) return;
     const row = {
-      athlete_id: sbCfg().athleteId,
+      athlete_id: athleteId(),
       applied_on: appliedOn,
       source: source,
       reason: rec.reason || "",
@@ -524,6 +572,7 @@
     });
   }
   function flushQueue() {
+    if (!sbReady()) return;
     const q = loadQueue();
     if (!q.length) return;
     saveQueue([]);
@@ -613,7 +662,7 @@
     const from = iso(addDays(today, -1));
     const to = iso(today);
     const path =
-      "/external_activities?athlete_id=eq." + encodeURIComponent(sbCfg().athleteId) +
+      "/external_activities?athlete_id=eq." + encodeURIComponent(athleteId()) +
       "&activity_date=gte." + from + "&activity_date=lte." + to + "&select=*";
     sbFetch("GET", path).then(function (res) {
       if (!res.ok || !Array.isArray(res.json)) return;
@@ -791,12 +840,280 @@
     render();
   }
 
-  function topbar(week) {
+  function mapFeel(feel) {
+    const raw = String(feel || "").toLowerCase();
+    if (raw === "easy") return "Easy";
+    if (raw === "hard" || raw === "too_hard") return "Hard";
+    return "Right";
+  }
+  function writeLastSession(date, status) {
+    if (!isAuthed()) return;
+    const log = dayLog(date);
+    const meta = dayMeta(date);
+    const byName = {};
+    const order = [];
+    const exs = log.exercises || {};
+    Object.keys(exs).forEach(function (id) {
+      const baseId = id.split("::")[0];
+      const ex = D.exercises[baseId];
+      if (!ex) return;
+      const sets = [];
+      (exs[id] || []).forEach(function (s) {
+        if (!s) return;
+        if (!isLoggedSet(s) && !setHasValue(s) && s.done !== true) return;
+        sets.push({
+          weight: s.weight == null ? "" : s.weight,
+          reps: s.reps == null ? "" : s.reps
+        });
+      });
+      if (!sets.length) return;
+      if (!byName[ex.name]) {
+        byName[ex.name] = [];
+        order.push(ex.name);
+      }
+      byName[ex.name] = byName[ex.name].concat(sets);
+    });
+    const rec = {
+      date: iso(date),
+      dayId: meta.id,
+      status: status === "done" ? "done" : "in_progress",
+      feel: mapFeel(log.feel || "right"),
+      rpe: log.rpe == null || log.rpe === "" ? null : Number(log.rpe),
+      lifts: order.map(function (name) { return { name: name, sets: byName[name] }; })
+    };
+    if (log.smoked) rec.smoked = log.smoked;
+    try { localStorage.setItem(LAST, JSON.stringify(rec)); } catch (e) {}
+  }
+  function dayPhase(date) {
+    const log = dayLog(date);
+    if (log.completed) return "done";
+    if (log.started) return "resume";
+    const exs = log.exercises || {};
+    const ids = Object.keys(exs);
+    for (let i = 0; i < ids.length; i++) {
+      const sets = exs[ids[i]] || [];
+      for (let s = 0; s < sets.length; s++) {
+        if (isLoggedSet(sets[s]) || (sets[s] && sets[s].done === true)) return "resume";
+      }
+    }
+    return "not_started";
+  }
+  function liftHasLog(log, exId) {
+    const sets = (log.exercises && log.exercises[exId]) || [];
+    for (let i = 0; i < sets.length; i++) {
+      if (isLoggedSet(sets[i]) || (sets[i] && sets[i].done === true)) return true;
+    }
+    return false;
+  }
+  function firstOpenSet(log, exId, nSets) {
+    const sets = (log.exercises && log.exercises[exId]) || [];
+    for (let i = 0; i < nSets; i++) {
+      const s = sets[i];
+      if (!(isLoggedSet(s) || (s && s.done === true))) return i;
+    }
+    return -1;
+  }
+  function findResumePoint(date) {
+    const meta = dayMeta(date);
+    const log = dayLog(date);
+    const week = weekNumber(date);
+    if (meta.type === "ride") return { view: "ride", exIndex: 0, currentSet: 0, round: 0 };
+    if (meta.type === "off") return { view: "mobility", exIndex: 0, currentSet: 0, round: 0 };
+    if (meta.type === "sat") {
+      const choice = log.satChoice || state.satChoice;
+      if (choice === "ride") return { view: "ride", exIndex: 0, currentSet: 0, round: 0 };
+      if (choice === "intervals") return { view: "intervals", exIndex: 0, currentSet: 0, round: 0 };
+      const list = meta.circuit || [];
+      const rounds = circuitRounds(week, log.highStress);
+      let any = false;
+      let resume = null;
+      for (let r = 0; r < rounds; r++) {
+        for (let i = 0; i < list.length; i++) {
+          const key = list[i] + "::r" + r;
+          if (liftHasLog(log, key)) any = true;
+          else if (!resume) resume = { view: "exercise", exIndex: i, currentSet: 0, round: r };
+        }
+      }
+      if (!any) return { view: "exercise", exIndex: 0, currentSet: 0, round: 0 };
+      if (!resume) return { view: "done", allDone: true, exIndex: 0, currentSet: 0, round: 0 };
+      return resume;
+    }
+    const list = meta.exercises || [];
+    let any = false;
+    let lastLogged = -1;
+    for (let i = 0; i < list.length; i++) {
+      if (liftHasLog(log, list[i])) {
+        any = true;
+        lastLogged = i;
+      }
+    }
+    if (!any) return { view: "warmup", exIndex: 0, currentSet: 0, round: 0 };
+    for (let i = lastLogged; i < list.length; i++) {
+      const ex = D.exercises[list[i]];
+      const nSets = setsFor(ex, week, log.highStress, date);
+      const open = firstOpenSet(log, list[i], nSets);
+      if (open >= 0) {
+        if (ex && ex.optional && !liftHasLog(log, list[i]) && i > lastLogged) continue;
+        return { view: "exercise", exIndex: i, currentSet: open, round: 0 };
+      }
+    }
+    return { view: "done", allDone: true, exIndex: 0, currentSet: 0, round: 0 };
+  }
+  function upsertAthlete(user) {
+    if (!user || !user.id) return Promise.resolve();
+    return sbFetch("POST", "/athletes?on_conflict=id", {
+      id: user.id,
+      name: "Jon Mcgee"
+    }, { Prefer: "resolution=merge-duplicates,return=minimal" });
+  }
+  function afterAuth(data) {
+    if (!stashAuth(data)) return false;
+    authErr = "";
+    state.view = "home";
+    upsertAthlete(data.user);
+    flushQueue();
+    render();
+    return true;
+  }
+  function readAuthForm() {
+    const emailEl = document.getElementById("auth-email");
+    const passEl = document.getElementById("auth-pass");
+    return {
+      email: emailEl ? String(emailEl.value || "").trim() : "",
+      password: passEl ? String(passEl.value || "") : ""
+    };
+  }
+  function authRequest(path, body, extraHeaders) {
+    const c = sbCfg();
+    if (!c || !c.supabaseUrl || !c.supabaseKey) {
+      return Promise.resolve({ ok: false, json: { msg: "Missing config" } });
+    }
+    const headers = {
+      apikey: c.supabaseKey,
+      "Content-Type": "application/json"
+    };
+    if (extraHeaders) {
+      Object.keys(extraHeaders).forEach(function (k) { headers[k] = extraHeaders[k]; });
+    }
+    return fetch(authBase() + "/auth/v1" + path, {
+      method: "POST",
+      headers: headers,
+      body: body ? JSON.stringify(body) : undefined
+    }).then(function (res) {
+      return res.text().then(function (text) {
+        let json = null;
+        if (text) {
+          try { json = JSON.parse(text); } catch (e) { json = null; }
+        }
+        return { ok: res.ok, json: json || {} };
+      });
+    }).catch(function () {
+      return { ok: false, json: {} };
+    });
+  }
+  function doSignIn() {
+    const form = readAuthForm();
+    if (!emailAllowed(form.email)) {
+      authErr = "This login is for Jon only.";
+      renderLogin();
+      return;
+    }
+    if (!form.password) {
+      authErr = "Enter a password.";
+      renderLogin();
+      return;
+    }
+    authRequest("/token?grant_type=password", { email: form.email, password: form.password }).then(function (res) {
+      const data = res.json || {};
+      if (data.access_token && data.user && data.user.id) {
+        if (!emailAllowed(data.user.email)) {
+          authErr = "This login is for Jon only.";
+          clearAuth();
+          renderLogin();
+          return;
+        }
+        afterAuth(data);
+        return;
+      }
+      authErr = "Check your email, then Sign in.";
+      renderLogin();
+    });
+  }
+  function doSignUp() {
+    const form = readAuthForm();
+    if (!emailAllowed(form.email)) {
+      authErr = "This login is for Jon only.";
+      renderLogin();
+      return;
+    }
+    if (!form.password) {
+      authErr = "Enter a password.";
+      renderLogin();
+      return;
+    }
+    authRequest("/signup", { email: form.email, password: form.password }).then(function (res) {
+      const data = res.json || {};
+      if (data.access_token && data.user && data.user.id) {
+        if (!emailAllowed(data.user.email)) {
+          authErr = "This login is for Jon only.";
+          clearAuth();
+          renderLogin();
+          return;
+        }
+        afterAuth(data);
+        return;
+      }
+      authErr = "Check your email, then Sign in.";
+      renderLogin();
+    });
+  }
+  function doSignOut() {
+    const a = loadAuth();
+    const headers = {};
+    if (a && a.access_token) headers.Authorization = "Bearer " + a.access_token;
+    authRequest("/logout", {}, headers).catch(function () {});
+    clearAuth();
+    authErr = "";
+    state.view = "home";
+    render();
+  }
+  function renderLogin() {
+    setDock(false);
+    const form = {
+      email: (document.getElementById("auth-email") || {}).value || "",
+      password: (document.getElementById("auth-pass") || {}).value || ""
+    };
+    let html = '<div class="login">';
+    html += '<div class="brand"><img src="icon-192.png" alt="" onerror="this.onerror=null;this.src=\'icon.svg\'">BotFit</div>';
+    html += '<p class="hero-kicker">Jon\'s gym</p>';
+    html += "<h1>Sign in</h1>";
+    html += '<p class="lede">Email and password. Then Home — no settings maze.</p>';
+    if (authErr) html += '<p class="auth-err">' + esc(authErr) + "</p>";
+    html += '<label class="field"><span>Email</span><input type="email" id="auth-email" autocomplete="username" placeholder="jon@pushdmg.com" value="' + esc(form.email) + '"></label>';
+    html += '<label class="field"><span>Password</span><input type="password" id="auth-pass" autocomplete="current-password" value="' + esc(form.password) + '"></label>';
+    html += '<div class="actions">';
+    html += '<button type="button" class="btn btn-primary" data-act="signin">Sign in</button>';
+    html += '<button type="button" class="btn btn-ghost" data-act="signup">Create account</button>';
+    html += "</div></div>";
+    $app.innerHTML = html;
+  }
+  function toggleWarmup(id) {
+    if (!id || !isAuthed()) return;
+    const now = Date.now();
+    if (now - wuTapAt < 350) return;
+    wuTapAt = now;
+    patchDay(state.selectedDate, function (log) { log.warmup[id] = !log.warmup[id]; });
+    render();
+  }
+
+  function topbar(week, home) {
     return (
       '<div class="topbar">' +
       '<div class="brand"><img src="icon-192.png" alt="" onerror="this.onerror=null;this.src=\'icon.svg\'">BotFit</div>' +
+      '<div class="topbar-end">' +
       '<div class="week-pill">Week ' + week + (week === 8 ? " · deload" : week === 1 ? " · learn the room" : "") + "</div>" +
-      "</div>"
+      (home ? '<button type="button" class="signout" data-act="signout">Out</button>' : "") +
+      "</div></div>"
     );
   }
 
@@ -847,37 +1164,35 @@
     const isToday = iso(date) === iso(today);
     const intensity = D.intensity[week];
     const nSets = setsFor(null, week, log.highStress, date);
+    const phase = dayPhase(date);
 
-    let body = topbar(week);
-    body += '<p class="date-line">' + esc(prettyDate(date)) + (isToday ? " · today" : "") + "</p>";
+    let html = '<div class="ex-main">';
+    html += topbar(week, true);
+    html += '<p class="date-line">' + esc(prettyDate(date)) + (isToday ? " · today" : "") + "</p>";
     if (date < WEEK1) {
-      body += '<p class="hero-kicker">Week 1 starts Mon Aug 17</p>';
+      html += '<p class="hero-kicker">Week 1 starts Mon Aug 17</p>';
     } else if (afterPlan(date)) {
-      body += '<p class="hero-kicker">Plan complete — week 8 volumes still on</p>';
+      html += '<p class="hero-kicker">Plan complete — week 8 volumes still on</p>';
     } else {
-      body += '<p class="hero-kicker">' + (isToday ? "Today" : "Selected") + "</p>";
+      html += '<p class="hero-kicker">' + (isToday ? "Today" : "Selected") + "</p>";
     }
-    body += "<h1>" + esc(meta.title) + "</h1>";
-    body += '<p class="lede">' + esc(meta.blurb) + "</p>";
-    body += pickerHtml(date);
-    body +=
+    html += "<h1>" + esc(meta.title) + "</h1>";
+    html += '<p class="lede">' + esc(meta.blurb) + "</p>";
+    html += pickerHtml(date);
+    html +=
       '<button type="button" class="cal-toggle" data-act="toggle-cal">' +
       (state.showCal ? "Hide calendar" : "Show calendar") +
       "</button>";
-    if (state.showCal) body += monthHtml(date);
+    if (state.showCal) html += monthHtml(date);
     const adj = getAdjust(iso(date));
     if (meta.type === "lift") {
-      body += '<div class="note"><strong>This week.</strong> ' + nSets + " sets per exercise. " + esc(intensity);
-      if (adj && adj.reason) body += " " + esc(adj.reason);
-      body += "</div>";
-    } else {
-      body += '<div class="note"><strong>This week.</strong> ' + esc(intensity);
-      if (adj && adj.reason) body += " " + esc(adj.reason);
-      body += "</div>";
+      html += '<div class="note"><strong>This week.</strong> ' + nSets + " sets per exercise. " + esc(intensity);
+      if (adj && adj.reason) html += " " + esc(adj.reason);
+      html += "</div>";
     }
 
-    if (meta.type === "lift") {
-      body +=
+    if (meta.type === "lift" && week !== 1) {
+      html +=
         '<button type="button" class="toggle' +
         (log.highStress ? " is-on" : "") +
         '" data-act="toggle-stress"><span class="box">' +
@@ -885,27 +1200,7 @@
         "</span><span>Rough day (2 sets)<br><span class=\"hint\">Bad sleep or a brutal workday. Keep the session, cut the volume.</span></span></button>";
     }
 
-    if (meta.type === "sat") {
-      body += '<p class="hint">Pick one.</p>';
-      body +=
-        '<button type="button" class="choice" data-act="start-sat" data-choice="ride"><b>Easy outdoor ride</b><span>' +
-        esc(rideDur("sat", week)) +
-        " · talk pace. Or stay on a spin bike if weather sucks.</span></button>";
-      body +=
-        '<button type="button" class="choice" data-act="start-sat" data-choice="circuit"><b>Full-body circuit</b><span>' +
-        circuitRounds(week, log.highStress) +
-        " rounds: KB deadlift, DB press, cable row, goblet, farmer carry.</span></button>";
-      if (week >= 5 && week <= 7) {
-        body +=
-          '<button type="button" class="choice" data-act="start-sat" data-choice="intervals"><b>Short intervals</b><span>24 min on a spin bike: 6 easy, 8 × 30s hard / 90s easy, 2 cooldown. Only if Thursday legs recovered.</span></button>';
-      }
-    } else if (meta.type === "ride") {
-      const label = log.completed ? "View recap" : log.started ? "Resume session" : "Start session";
-      body += '<div class="actions"><button type="button" class="btn btn-primary" data-act="start">' + label + "</button></div>";
-    } else if (meta.type === "off") {
-      const label = log.completed ? "View recap" : "Start recovery";
-      body += '<div class="actions"><button type="button" class="btn btn-primary" data-act="start">' + label + "</button></div>";
-    } else {
+    if (meta.type === "lift") {
       const n = meta.exercises.length;
       const firstByDay = {
         mon: "Hammer Strength chest press",
@@ -917,26 +1212,43 @@
         (D.exercises[meta.exercises[0]] && D.exercises[meta.exercises[0]].name) ||
         "the first lift";
       const weekday = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][jsDay(date)];
-      const label = log.completed ? "View recap" : log.started && !log.completed ? "Resume session" : "Start session";
-      body +=
+      html +=
         '<div class="card"><b>' +
         n +
         " exercises · " + nSets + " sets</b><p>Warm-up first, then one lift per screen. " +
         esc(firstLift) + " is first on " + weekday + ". Log weight and reps as you go.</p></div>";
-      body += '<div class="actions"><button type="button" class="btn btn-primary" data-act="start">' + label + "</button>";
-      if (log.completed) {
-        body += '<button type="button" class="btn btn-ghost" data-act="restart">Start over</button>';
-      } else if (log.started) {
-        body += '<button type="button" class="btn btn-ghost" data-act="restart">Start over</button>';
-      }
-      body += "</div>";
     }
 
     if (log.completed) {
-      body += '<p class="hint">Logged for ' + esc(iso(date)) + ". Green dot on the day picker.</p>";
+      html += '<p class="hint">Logged for ' + esc(iso(date)) + ". Green dot on the day picker.</p>";
     }
-    body += '<p class="install">Add to Home Screen from the browser share menu. Works offline after the first open on a local server (not file://).</p>';
-    $app.innerHTML = body;
+    html += '<p class="install">Add to Home Screen from the browser share menu. Works offline after the first open on a local server (not file://).</p>';
+    html += "</div>";
+
+    html += '<div class="pin-log">';
+    if (meta.type === "sat" && phase === "not_started") {
+      html += '<p class="hint">Pick one.</p>';
+      html +=
+        '<button type="button" class="choice" data-act="start-sat" data-choice="ride"><b>Easy outdoor ride</b><span>' +
+        esc(rideDur("sat", week)) +
+        " · talk pace. Or stay on a spin bike if weather sucks.</span></button>";
+      html +=
+        '<button type="button" class="choice" data-act="start-sat" data-choice="circuit"><b>Full-body circuit</b><span>' +
+        circuitRounds(week, log.highStress) +
+        " rounds: KB deadlift, DB press, cable row, goblet, farmer carry.</span></button>";
+      if (week >= 5 && week <= 7) {
+        html +=
+          '<button type="button" class="choice" data-act="start-sat" data-choice="intervals"><b>Short intervals</b><span>24 min on a spin bike: 6 easy, 8 × 30s hard / 90s easy, 2 cooldown. Only if Thursday legs recovered.</span></button>';
+      }
+    } else {
+      let label = "Start session";
+      if (phase === "done") label = "View recap";
+      else if (phase === "resume") label = "Resume session";
+      else if (meta.type === "off") label = "Start recovery";
+      html += '<div class="actions"><button type="button" class="btn btn-primary" data-act="start">' + label + "</button></div>";
+    }
+    html += "</div>";
+    $app.innerHTML = html;
   }
 
   function renderWarmup() {
@@ -1020,7 +1332,7 @@
       ? "R" + (state.round + 1) + " · " + (state.exIndex + 1) + "/" + list.length
       : (state.exIndex + 1) + " of " + list.length;
     html +=
-      '<div class="navrow"><button type="button" class="back" data-act="ex-back">← Back</button><div class="progress">' +
+      '<div class="navrow"><button type="button" class="back" data-act="home">← Home</button><button type="button" class="back" data-act="ex-back">← Back</button><div class="progress">' +
       stepLabel + "</div></div>";
 
     if (isCircuit) {
@@ -1356,6 +1668,7 @@
   }
 
   function finishSession() {
+    if (!isAuthed()) return;
     const now = new Date().toISOString();
     patchDay(state.selectedDate, function (log) {
       log.completed = true;
@@ -1363,7 +1676,9 @@
       if (!log.started_at) log.started_at = now;
       log.completed_at = now;
       if (state.satChoice) log.satChoice = state.satChoice;
+      if (!log.feel) log.feel = "right";
     });
+    writeLastSession(state.selectedDate, "done");
     state.view = "done";
     persistUI();
     syncSession(state.selectedDate);
@@ -1403,6 +1718,7 @@
     } catch (e) {}
   }
   function restoreUI() {
+    if (!isAuthed()) return;
     try {
       const u = JSON.parse(localStorage.getItem(UI) || "null");
       if (!u || !u.date) return;
@@ -1432,10 +1748,18 @@
   let lastRenderedView = null;
   function render() {
     persistUI();
+    if (!isAuthed()) {
+      setDock(false);
+      renderLogin();
+      lastRenderedView = "login";
+      renderOverlay();
+      window.scrollTo(0, 0);
+      return;
+    }
     const prevView = lastRenderedView;
     const sameView = prevView === state.view;
     const keepY = sameView && state.view === "home" ? window.scrollY : 0;
-    const dock = state.view === "warmup" || state.view === "exercise" || state.view === "mobility" || state.view === "off";
+    const dock = state.view === "home" || state.view === "warmup" || state.view === "exercise" || state.view === "mobility" || state.view === "off";
     setDock(dock);
     if (state.view === "home") renderHome();
     else if (state.view === "warmup") renderWarmup();
@@ -1453,6 +1777,7 @@
   }
 
   function startSession() {
+    if (!isAuthed()) return;
     ensureAudio();
     const meta = dayMeta(state.selectedDate);
     patchDay(state.selectedDate, function (log) {
@@ -1474,21 +1799,31 @@
   }
 
   function resumeSession() {
+    if (!isAuthed()) return;
     ensureAudio();
-    const u = (function () {
-      try { return JSON.parse(localStorage.getItem(UI) || "null"); } catch (e) { return null; }
-    })();
-    if (u && u.date === iso(state.selectedDate) && u.view && u.view !== "home" && u.view !== "done") {
-      state.view = u.view;
-      state.satChoice = u.satChoice;
-      state.exIndex = u.exIndex || 0;
-      state.round = u.round || 0;
-      state.currentSet = u.currentSet || 0;
-      state.interval = u.interval || null;
+    const log = dayLog(state.selectedDate);
+    if (log.satChoice) state.satChoice = log.satChoice;
+    const point = findResumePoint(state.selectedDate);
+    if (point.view === "done" || point.allDone) {
+      if (!log.completed) {
+        finishSession();
+        return;
+      }
+      state.view = "done";
       render();
       return;
     }
-    startSession();
+    if (point.view === "intervals") {
+      const u = (function () {
+        try { return JSON.parse(localStorage.getItem(UI) || "null"); } catch (e) { return null; }
+      })();
+      if (u && u.date === iso(state.selectedDate) && u.interval) state.interval = u.interval;
+    }
+    state.exIndex = point.exIndex || 0;
+    state.currentSet = point.currentSet || 0;
+    state.round = point.round || 0;
+    state.view = point.view;
+    render();
   }
 
   function markSetDone() {
@@ -1541,6 +1876,12 @@
     }, 1000);
   }
 
+  $app.addEventListener("pointerdown", function (e) {
+    const t = e.target.closest("[data-act='toggle-wu']");
+    if (!t) return;
+    toggleWarmup(t.getAttribute("data-id"));
+  });
+
   $app.addEventListener("click", function (e) {
     const t = e.target.closest("[data-act]");
     if (!t) return;
@@ -1567,17 +1908,21 @@
       }
       render();
     } else if (act === "toggle-stress") {
+      if (!isAuthed()) return;
       patchDay(state.selectedDate, function (log) { log.highStress = !log.highStress; });
       scheduleSync(state.selectedDate);
       render();
     } else if (act === "start") {
-      const log = dayLog(state.selectedDate);
-      if (log.completed && state.view === "home") { state.view = "done"; render(); return; }
-      if (log.started && !log.completed) { resumeSession(); return; }
+      if (!isAuthed()) return;
+      const phase = dayPhase(state.selectedDate);
+      if (phase === "done") { state.view = "done"; render(); return; }
+      if (phase === "resume") { resumeSession(); return; }
       startSession();
     } else if (act === "restart") {
+      if (!isAuthed()) return;
       startSession();
     } else if (act === "start-sat") {
+      if (!isAuthed()) return;
       ensureAudio();
       state.satChoice = t.getAttribute("data-choice");
       patchDay(state.selectedDate, function (log) {
@@ -1597,12 +1942,20 @@
       else state.view = "exercise";
       render();
     } else if (act === "home") {
+      if (isAuthed()) {
+        const log = dayLog(state.selectedDate);
+        if (log.started && !log.completed) writeLastSession(state.selectedDate, "in_progress");
+      }
       state.view = "home";
       render();
     } else if (act === "toggle-wu") {
-      const id = t.getAttribute("data-id");
-      patchDay(state.selectedDate, function (log) { log.warmup[id] = !log.warmup[id]; });
-      render();
+      toggleWarmup(t.getAttribute("data-id"));
+    } else if (act === "signin") {
+      doSignIn();
+    } else if (act === "signup") {
+      doSignUp();
+    } else if (act === "signout") {
+      doSignOut();
     } else if (act === "wu-continue") {
       state.exIndex = 0;
       state.currentSet = 0;

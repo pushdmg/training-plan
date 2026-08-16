@@ -93,6 +93,14 @@ body:has(#app.has-dock) { height: 100%; overflow: hidden; }
   text-transform: uppercase;
 }
 .brand img { width: 36px; height: 36px; border-radius: 10px; }
+.topbar-end {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+  max-width: 58%;
+}
 .week-pill {
   background: var(--amber-bg);
   color: var(--amber);
@@ -104,11 +112,21 @@ body:has(#app.has-dock) { height: 100%; overflow: hidden; }
   letter-spacing: 0.04em;
   text-transform: uppercase;
   min-width: 0;
-  max-width: 52%;
+  max-width: 100%;
   text-align: right;
   white-space: normal;
   overflow-wrap: anywhere;
   line-height: 1.25;
+}
+.signout {
+  background: transparent;
+  color: var(--dim);
+  min-height: 32px;
+  padding: 0 4px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .date-line { color: var(--muted); font-size: 15px; margin: 0 0 6px; }
@@ -198,6 +216,7 @@ h3 {
   padding: 14px 16px;
   min-height: var(--tap);
   margin-bottom: 14px;
+  touch-action: manipulation;
 }
 .toggle .box {
   width: 28px;
@@ -359,7 +378,7 @@ label.field span {
   text-transform: uppercase;
   margin-bottom: 4px;
 }
-input[type="text"], input[type="number"], textarea {
+input[type="text"], input[type="number"], input[type="email"], input[type="password"], input[inputmode="decimal"], textarea {
   width: 100%;
   min-height: 52px;
   background: var(--bg);
@@ -385,6 +404,7 @@ textarea { min-height: 72px; font-size: 16px; font-weight: 500; resize: vertical
   padding: 14px;
   margin-bottom: 10px;
   min-height: 72px;
+  touch-action: manipulation;
 }
 .check.is-on { border-color: var(--green); background: var(--green-bg); }
 .check .box {
@@ -658,3 +678,17 @@ input, textarea, .stepper, .stepper input, .set-grid, .set, label.field, .recap-
 }
 .month-grid button.is-on.is-done::after { background: #000000; }
 .month-empty { min-height: 40px; }
+
+.login { padding-top: 8px; }
+.login .brand { margin-bottom: 28px; }
+.login .field { margin-bottom: 12px; }
+.login input { font-size: 18px; font-weight: 600; }
+.auth-err {
+  color: var(--red);
+  background: #2a1212;
+  border: 1px solid #5a2424;
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin: 0 0 14px;
+  font-weight: 700;
+}
