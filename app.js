@@ -9,6 +9,7 @@
   const SBQ = "botfit-sb-queue";
   const AUTH = "botfit-sb-auth";
   const LAST = "botfit-last-session-v1";
+  const PROPOSAL = "botfit-week-proposal-v1";
   const WEEK1 = parseISO(D.week1Monday);
 
   const INTERVALS = (function () {
@@ -34,7 +35,9 @@
     interval: null,
     mobIndex: 0,
     calMonth: null,
-    showCal: false
+    showCal: false,
+    leaveKind: null,
+    leaveReturn: null
   };
 
   let restTimer = null;
@@ -180,7 +183,16 @@
 
   let storeMem = null;
   function emptyDay() {
-    return { warmup: {}, exercises: {}, completed: false, satChoice: null, highStress: false };
+    return {
+      warmup: {},
+      exercises: {},
+      completed: false,
+      started: false,
+      status: null,
+      reason: null,
+      satChoice: null,
+      highStress: false
+    };
   }
   function loadAll() {
     if (storeMem) return storeMem;
@@ -379,6 +391,81 @@
     return cur.sets === rec.sets && cur.modifier === rec.modifier && cur.reason === rec.reason;
   }
 
+  function loadProposal() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(PROPOSAL) || "null");
+      return raw && typeof raw === "object" ? raw : null;
+    } catch (e) {
+      return null;
+    }
+  }
+  function saveProposal(rec) {
+    try { localStorage.setItem(PROPOSAL, JSON.stringify(rec)); } catch (e) {}
+  }
+  function clearProposal() {
+    try { localStorage.removeItem(PROPOSAL); } catch (e) {}
+  }
+  function proposalDays(p) {
+    if (!p || typeof p !== "object") return null;
+    if (p.days && typeof p.days === "object" && !Array.isArray(p.days)) return p.days;
+    if (p.adjustments && typeof p.adjustments === "object" && !Array.isArray(p.adjustments)) return p.adjustments;
+    const out = {};
+    Object.keys(p).forEach(function (k) {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(k) && p[k] && typeof p[k] === "object") out[k] = p[k];
+    });
+    return Object.keys(out).length ? out : null;
+  }
+  function proposalCopy(p) {
+    const note = (p && p.note) || (p && p.reason ? ("Week change. " + p.reason) : "Week change.");
+    const dock = (p && (p.label || p.dock)) || "Rest of the week";
+    return { note: note, dock: dock };
+  }
+  function remainingLiftDaysThisWeek(fromDate) {
+    const start = weekStartFor(fromDate);
+    const all = loadAll();
+    const out = [];
+    for (let i = 0; i < 7; i++) {
+      const d = addDays(start, i);
+      if (iso(d) <= iso(fromDate)) continue;
+      if (dayMeta(d).type !== "lift") continue;
+      const log = all[iso(d)];
+      if (log && (log.completed || log.status === "incomplete" || log.status === "skipped")) continue;
+      out.push(d);
+    }
+    return out;
+  }
+  function writeTooHardProposal(date) {
+    const days = remainingLiftDaysThisWeek(date);
+    if (!days.length) return;
+    const recs = {};
+    days.forEach(function (d) {
+      recs[iso(d)] = { sets: 2, modifier: 0.75, reason: "Too hard · 2 sets" };
+    });
+    saveProposal({
+      source: "too_hard",
+      fromDate: iso(date),
+      dayId: dayMeta(date).id,
+      note: "Week change. Too hard · 2 sets on remaining lift days",
+      label: "Rest of the week",
+      days: recs
+    });
+  }
+  function acceptProposal() {
+    const p = loadProposal();
+    const days = proposalDays(p);
+    if (days) {
+      const all = loadAdjust();
+      Object.keys(days).forEach(function (key) {
+        const rec = days[key];
+        if (!rec || typeof rec !== "object") return;
+        all[key] = rec;
+        queueAdjustment("proposal", rec, key);
+      });
+      saveAdjust(all);
+    }
+    clearProposal();
+  }
+
   function loadQueue() {
     try {
       const q = JSON.parse(localStorage.getItem(SBQ) || "[]");
@@ -456,6 +543,7 @@
     return meta.type;
   }
   function sessionStatus(log) {
+    if (log.status === "incomplete" || log.status === "skipped") return log.status;
     if (log.completed) return "completed";
     if (log.started) return "started";
     return "planned";
@@ -861,7 +949,7 @@
     if (raw === "hard" || raw === "too_hard") return "Hard";
     return "Right";
   }
-  function writeLastSession(date, status) {
+  function writeLastSession(date, status, reason) {
     if (!isAuthed()) return;
     const log = dayLog(date);
     const meta = dayMeta(date);
@@ -888,20 +976,25 @@
       }
       byName[ex.name] = byName[ex.name].concat(sets);
     });
+    const ended = status === "incomplete" || status === "skipped";
     const rec = {
       date: iso(date),
       dayId: meta.id,
-      status: status === "done" ? "done" : "in_progress",
-      feel: mapFeel(log.feel || "right"),
+      status: status === "done" ? "done" : (ended ? status : (status === "in_progress" ? "in_progress" : status)),
+      reason: reason || log.reason || null,
+      feel: ended ? (log.feel ? mapFeel(log.feel) : null) : mapFeel(log.feel || "right"),
       rpe: log.rpe == null || log.rpe === "" ? null : Number(log.rpe),
       lifts: order.map(function (name) { return { name: name, sets: byName[name] }; })
     };
     if (log.smoked) rec.smoked = log.smoked;
     try { localStorage.setItem(LAST, JSON.stringify(rec)); } catch (e) {}
   }
+  function dayClosed(log) {
+    return !!(log && (log.completed || log.status === "incomplete" || log.status === "skipped"));
+  }
   function dayPhase(date) {
     const log = dayLog(date);
-    if (log.completed) return "done";
+    if (dayClosed(log)) return "done";
     if (log.started) return "resume";
     const exs = log.exercises || {};
     const ids = Object.keys(exs);
@@ -912,6 +1005,114 @@
       }
     }
     return "not_started";
+  }
+  function sessionInProgress(date) {
+    const log = dayLog(date);
+    if (dayClosed(log)) return false;
+    if (log.started) return true;
+    return dayPhase(date) === "resume";
+  }
+  function snapshotLeave() {
+    return {
+      view: state.view,
+      exIndex: state.exIndex,
+      currentSet: state.currentSet,
+      round: state.round,
+      satChoice: state.satChoice,
+      interval: state.interval,
+      rideStep: state.rideStep
+    };
+  }
+  function restoreLeave(ret) {
+    if (!ret) return;
+    state.view = ret.view || "home";
+    state.exIndex = ret.exIndex || 0;
+    state.currentSet = ret.currentSet || 0;
+    state.round = ret.round || 0;
+    state.satChoice = ret.satChoice;
+    state.interval = ret.interval || null;
+    state.rideStep = ret.rideStep || 0;
+  }
+  function goHomeQuiet() {
+    state.view = "home";
+    state.leaveKind = null;
+    state.leaveReturn = null;
+    render();
+  }
+  function requestLeave() {
+    const sessionViews = {
+      warmup: true,
+      exercise: true,
+      ride: true,
+      intervals: true,
+      mobility: true,
+      off: true
+    };
+    if (!sessionViews[state.view] || !sessionInProgress(state.selectedDate)) {
+      goHomeQuiet();
+      return;
+    }
+    state.leaveReturn = snapshotLeave();
+    state.view = "save";
+    render();
+  }
+  function discardDay(date) {
+    if (!isAuthed()) return;
+    const all = loadAll();
+    all[iso(date)] = emptyDay();
+    saveAll(all);
+    state.satChoice = null;
+    state.interval = null;
+    scheduleSync(date);
+  }
+  function saveAndEnd() {
+    if (!isAuthed()) return;
+    patchDay(state.selectedDate, function (log) {
+      log.started = true;
+      log.completed = false;
+      log.status = "incomplete";
+      log.reason = null;
+    });
+    scheduleSync(state.selectedDate);
+    state.leaveKind = "incomplete";
+    state.view = "why";
+    render();
+  }
+  function openWhySkipped() {
+    if (!isAuthed()) return;
+    state.leaveKind = "skipped";
+    state.view = "why";
+    render();
+  }
+  function chooseWhy(reason) {
+    if (!isAuthed()) return;
+    const status = state.leaveKind === "skipped" ? "skipped" : "incomplete";
+    patchDay(state.selectedDate, function (log) {
+      log.status = status;
+      log.reason = reason;
+      log.completed = false;
+      if (status === "incomplete") log.started = true;
+    });
+    writeLastSession(state.selectedDate, status, reason);
+    if (status === "incomplete" && reason === "too_hard") {
+      writeTooHardProposal(state.selectedDate);
+    }
+    scheduleSync(state.selectedDate);
+    state.leaveKind = null;
+    state.leaveReturn = null;
+    state.view = "home";
+    render();
+  }
+  function checkRowHtml(it, on) {
+    return (
+      '<div class="check' + (on ? " is-on" : "") + '">' +
+      '<button type="button" class="box" data-act="toggle-wu" data-id="' +
+      esc(it.id) +
+      '" aria-pressed="' + (on ? "true" : "false") +
+      '" aria-label="' + esc(it.title) + '">' +
+      (on ? "✓" : "") +
+      "</button><div><b>" + esc(it.title) + "</b><p>" + esc(it.detail) + "</p></div></div>"
+    );
   }
   function liftHasLog(log, exId) {
     const sets = (log.exercises && log.exercises[exId]) || [];
@@ -1262,11 +1463,25 @@
 
     if (log.completed) {
       html += '<p class="hint">Logged for ' + esc(iso(date)) + ". Green dot on the day picker.</p>";
+    } else if (log.status === "incomplete") {
+      html += '<p class="hint">Done · incomplete</p>';
+    } else if (log.status === "skipped") {
+      html += '<p class="hint">Done · skipped</p>';
     }
     html += '<p class="install">Add to Home Screen from the share menu.</p>';
     html += "</div>";
 
+    const proposal = loadProposal();
     html += '<div class="pin-log">';
+    if (proposal) {
+      const copy = proposalCopy(proposal);
+      html += '<div class="note"><strong>Week change.</strong> ' + esc(String(copy.note).replace(/^Week change\.\s*/i, "")) + "</div>";
+      html += '<p class="hint">' + esc(copy.dock) + "</p>";
+      html += '<div class="actions">';
+      html += '<button type="button" class="btn btn-primary" data-act="accept-week">Accept changes</button>';
+      html += '<button type="button" class="btn btn-ghost" data-act="keep-week">Keep schedule</button>';
+      html += "</div>";
+    }
     if (meta.type === "sat" && phase === "not_started") {
       html += '<p class="hint">Pick one.</p>';
       html +=
@@ -1288,6 +1503,9 @@
       else if (meta.type === "off") label = "Start recovery";
       html += '<div class="actions"><button type="button" class="btn btn-primary" data-act="start">' + label + "</button></div>";
     }
+    if (phase !== "done") {
+      html += '<div class="actions"><button type="button" class="btn btn-danger" data-act="skip-day">Skip</button></div>';
+    }
     html += "</div>";
     $app.innerHTML = html;
   }
@@ -1302,17 +1520,12 @@
     let html = '<div class="ex-main">';
     html += topbar(week);
     html +=
-      '<div class="navrow"><button type="button" class="back" data-act="home">← Home</button><div class="progress">WARM-UP · ' +
+      '<div class="navrow"><button type="button" class="back" data-act="leave">← Home</button><div class="progress">WARM-UP · ' +
       done + "/" + items.length + "</div></div>";
     html += "<h2>Warm-up</h2><p class=\"lede\">Check them off as you go. You can hit Next without finishing every box.</p>";
     items.forEach(function (it) {
       const on = !!log.warmup[it.id];
-      html +=
-        '<button type="button" class="check' +
-        (on ? " is-on" : "") +
-        '" data-act="toggle-wu" data-id="' + it.id +
-        '"><span class="box">' + (on ? "✓" : "") +
-        "</span><div><b>" + esc(it.title) + "</b><p>" + esc(it.detail) + "</p></div></button>";
+      html += checkRowHtml(it, on);
       if (it.id === "spin") {
         if (state.hold) {
           const left = Math.max(0, (state.hold.ends - Date.now()) / 1000);
@@ -1373,7 +1586,7 @@
       ? "R" + (state.round + 1) + " · " + (state.exIndex + 1) + "/" + list.length
       : (state.exIndex + 1) + " of " + list.length;
     html +=
-      '<div class="navrow"><button type="button" class="back" data-act="home">← Home</button><button type="button" class="back" data-act="ex-back">← Back</button><div class="progress">' +
+      '<div class="navrow"><button type="button" class="back" data-act="leave">← Home</button><button type="button" class="back" data-act="ex-back">← Back</button><div class="progress">' +
       stepLabel + "</div></div>";
 
     if (isCircuit) {
@@ -1511,7 +1724,7 @@
     const secs = rideSecs(kind, week);
     let html = topbar(week);
     html +=
-      '<div class="navrow"><button type="button" class="back" data-act="home">← Home</button><div class="progress">RIDE</div></div>';
+      '<div class="navrow"><button type="button" class="back" data-act="leave">← Home</button><div class="progress">RIDE</div></div>';
     html += '<p class="hero-kicker">Talk pace</p>';
     html += "<h2>" + (kind === "wed" ? "Zone 2 bike" : "Easy ride") + "</h2>";
     html += '<div class="where"><span class="pin">USE</span><div>Spin bikes — or take it outside.</div></div>';
@@ -1546,16 +1759,12 @@
     let html = '<div class="ex-main">';
     html += topbar(week);
     html +=
-      '<div class="navrow"><button type="button" class="back" data-act="home">← Home</button><div class="progress">MOBILITY</div></div>';
+      '<div class="navrow"><button type="button" class="back" data-act="leave">← Home</button><div class="progress">MOBILITY</div></div>';
     html += "<h2>" + (kind === "sun" ? "Off — walk or mobility" : "Short mobility") + "</h2>";
     html += '<p class="lede">Optional. Check them off or skip to done.</p>';
     items.forEach(function (it) {
       const on = !!log.warmup[it.id];
-      html +=
-        '<button type="button" class="check' + (on ? " is-on" : "") +
-        '" data-act="toggle-wu" data-id="' + it.id +
-        '"><span class="box">' + (on ? "✓" : "") +
-        "</span><div><b>" + esc(it.title) + "</b><p>" + esc(it.detail) + "</p></div></button>";
+      html += checkRowHtml(it, on);
       if (it.timer) {
         html += '<div class="actions"><button type="button" class="btn btn-ghost" data-act="start-hold" data-sec="' +
           it.timer + '">Start ' + it.timer + "s</button></div>";
@@ -1580,7 +1789,7 @@
     const step = INTERVALS[state.interval.i];
     let html = topbar(week);
     html +=
-      '<div class="navrow"><button type="button" class="back" data-act="home">← Home</button><div class="progress">' +
+      '<div class="navrow"><button type="button" class="back" data-act="leave">← Home</button><div class="progress">' +
       (state.interval.i + 1) + " / " + INTERVALS.length + "</div></div>";
     html += '<p class="hero-kicker">Spin bike</p>';
     html += "<h2>" + esc(step.label) + "</h2>";
@@ -1702,7 +1911,39 @@
     html += '<button type="button" data-act="track" data-field="smoked" data-val="N" class="' +
       (log.smoked === "N" ? "is-on" : "") + '">No</button>';
     html += "</div>";
-    html += '<div class="actions"><button type="button" class="btn btn-primary" data-act="home">Back home</button></div>';
+    html += '<div class="actions"><button type="button" class="btn btn-primary" data-act="back-home">Back home</button></div>';
+    $app.innerHTML = html;
+  }
+
+  function renderSave() {
+    const week = weekNumber(state.selectedDate);
+    let html = '<div class="ex-main">';
+    html += topbar(week);
+    html += '<p class="hero-kicker">Leaving</p>';
+    html += "<h1>Save?</h1>";
+    html += '<p class="lede">This session is in progress.</p>';
+    html += "</div>";
+    html += '<div class="pin-log"><div class="actions">';
+    html += '<button type="button" class="btn btn-danger" data-act="save-no">No</button>';
+    html += '<button type="button" class="btn btn-primary" data-act="save-end">Save and end</button>';
+    html += '<button type="button" class="btn btn-ghost" data-act="save-stay">Save and stay</button>';
+    html += "</div></div>";
+    $app.innerHTML = html;
+  }
+
+  function renderWhy() {
+    const week = weekNumber(state.selectedDate);
+    let html = '<div class="ex-main">';
+    html += topbar(week);
+    html += '<p class="hero-kicker">One question</p>';
+    html += "<h1>Why?</h1>";
+    html += '<p class="lede">What stopped the session.</p>';
+    html += "</div>";
+    html += '<div class="pin-log"><div class="actions">';
+    html += '<button type="button" class="btn btn-primary" data-act="why-reason" data-reason="too_hard">Too hard</button>';
+    html += '<button type="button" class="btn btn-ghost" data-act="why-reason" data-reason="time">Ran out of time</button>';
+    html += '<button type="button" class="btn btn-ghost" data-act="why-reason" data-reason="sick">Sick</button>';
+    html += "</div></div>";
     $app.innerHTML = html;
   }
 
@@ -1752,7 +1993,9 @@
         exIndex: state.exIndex,
         round: state.round,
         currentSet: state.currentSet,
-        interval: state.interval
+        interval: state.interval,
+        leaveKind: state.leaveKind,
+        leaveReturn: state.leaveReturn
       }));
     } catch (e) {}
   }
@@ -1763,7 +2006,8 @@
       if (!u || !u.date) return;
       const saved = parseISO(u.date);
       const today = startOfDay(new Date());
-      if (iso(saved) === iso(today) && u.view && u.view !== "home" && u.view !== "done") {
+      const keepLeave = u.view === "save" || u.view === "why";
+      if (keepLeave || (iso(saved) === iso(today) && u.view && u.view !== "home" && u.view !== "done")) {
         state.selectedDate = saved;
         state.view = u.view;
         state.satChoice = u.satChoice;
@@ -1772,6 +2016,8 @@
         state.round = u.round || 0;
         state.currentSet = u.currentSet || 0;
         state.interval = u.interval || null;
+        state.leaveKind = u.leaveKind || null;
+        state.leaveReturn = u.leaveReturn || null;
       } else if (u.date) {
         /* keep computed today; do not trap on a stale mid-workout from another day */
       }
@@ -1841,7 +2087,7 @@
       applyScroll(pos, true);
       return;
     }
-    const dock = state.view === "home" || state.view === "warmup" || state.view === "exercise" || state.view === "mobility" || state.view === "off";
+    const dock = state.view === "home" || state.view === "warmup" || state.view === "exercise" || state.view === "mobility" || state.view === "off" || state.view === "save" || state.view === "why";
     setDock(dock);
     if (state.view === "home") renderHome();
     else if (state.view === "warmup") renderWarmup();
@@ -1851,6 +2097,8 @@
     else if (state.view === "intervals") renderIntervals();
     else if (state.view === "off") renderMobility();
     else if (state.view === "done") renderDone();
+    else if (state.view === "save") renderSave();
+    else if (state.view === "why") renderWhy();
     else renderHome();
     if (gen !== renderGen) return;
     const key = screenKey();
@@ -1973,6 +2221,7 @@
       if (!t.closest(".picker, .month-grid")) return;
       const nextIso = t.getAttribute("data-iso");
       if (!nextIso) return;
+      clearProposal();
       state.selectedDate = parseISO(nextIso);
       state.calMonth = {
         y: state.selectedDate.getFullYear(),
@@ -1997,15 +2246,18 @@
       render();
     } else if (act === "start") {
       if (!isAuthed()) return;
+      clearProposal();
       const phase = dayPhase(state.selectedDate);
       if (phase === "done") { state.view = "done"; render(); return; }
       if (phase === "resume") { resumeSession(); return; }
       startSession();
     } else if (act === "restart") {
       if (!isAuthed()) return;
+      clearProposal();
       startSession();
     } else if (act === "start-sat") {
       if (!isAuthed()) return;
+      clearProposal();
       ensureAudio();
       state.satChoice = t.getAttribute("data-choice");
       patchDay(state.selectedDate, function (log) {
@@ -2024,12 +2276,33 @@
       else if (state.satChoice === "intervals") { state.view = "intervals"; state.interval = { i: 0, remaining: INTERVALS[0].sec, running: false, done: false }; }
       else state.view = "exercise";
       render();
-    } else if (act === "home") {
-      if (isAuthed()) {
-        const log = dayLog(state.selectedDate);
-        if (log.started && !log.completed) writeLastSession(state.selectedDate, "in_progress");
-      }
-      state.view = "home";
+    } else if (act === "home" || act === "back-home") {
+      goHomeQuiet();
+    } else if (act === "leave") {
+      requestLeave();
+    } else if (act === "save-no") {
+      discardDay(state.selectedDate);
+      goHomeQuiet();
+    } else if (act === "save-end") {
+      saveAndEnd();
+    } else if (act === "save-stay") {
+      const ret = state.leaveReturn;
+      state.leaveReturn = null;
+      if (ret) restoreLeave(ret);
+      else state.view = "exercise";
+      render();
+    } else if (act === "why-reason") {
+      chooseWhy(t.getAttribute("data-reason"));
+    } else if (act === "skip-day") {
+      if (!isAuthed()) return;
+      if (dayPhase(state.selectedDate) === "done") return;
+      clearProposal();
+      openWhySkipped();
+    } else if (act === "accept-week") {
+      acceptProposal();
+      render();
+    } else if (act === "keep-week") {
+      clearProposal();
       render();
     } else if (act === "toggle-wu") {
       toggleWarmup(t.getAttribute("data-id"));
@@ -2038,6 +2311,7 @@
     } else if (act === "signup") {
       doSignUp();
     } else if (act === "signout") {
+      clearProposal();
       doSignOut();
     } else if (act === "wu-continue") {
       state.exIndex = 0;
@@ -2049,7 +2323,12 @@
       else if (state.round > 0) { state.round -= 1; state.exIndex = currentExerciseList().length - 1; state.currentSet = 0; }
       else {
         const meta = dayMeta(state.selectedDate);
-        state.view = meta.type === "lift" ? "warmup" : "home";
+        if (meta.type === "lift") {
+          state.view = "warmup";
+        } else {
+          requestLeave();
+          return;
+        }
       }
       render();
     } else if (act === "focus-set") {
