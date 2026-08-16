@@ -1011,6 +1011,23 @@
       return { ok: false, json: {} };
     });
   }
+  function authFailMessage(data, fallback) {
+    const d = data || {};
+    return d.msg || d.error_description || d.error || fallback;
+  }
+  function finishAuthSession(data) {
+    if (data && data.access_token && data.user && data.user.id) {
+      if (!emailAllowed(data.user.email)) {
+        authErr = "This login is for Jon only.";
+        clearAuth();
+        renderLogin();
+        return true;
+      }
+      afterAuth(data);
+      return true;
+    }
+    return false;
+  }
   function doSignIn() {
     const form = readAuthForm();
     if (!emailAllowed(form.email)) {
@@ -1025,17 +1042,8 @@
     }
     authRequest("/token?grant_type=password", { email: form.email, password: form.password }).then(function (res) {
       const data = res.json || {};
-      if (data.access_token && data.user && data.user.id) {
-        if (!emailAllowed(data.user.email)) {
-          authErr = "This login is for Jon only.";
-          clearAuth();
-          renderLogin();
-          return;
-        }
-        afterAuth(data);
-        return;
-      }
-      authErr = "Check your email, then Sign in.";
+      if (finishAuthSession(data)) return;
+      authErr = authFailMessage(data, "Could not sign in.");
       renderLogin();
     });
   }
@@ -1053,17 +1061,16 @@
     }
     authRequest("/signup", { email: form.email, password: form.password }).then(function (res) {
       const data = res.json || {};
-      if (data.access_token && data.user && data.user.id) {
-        if (!emailAllowed(data.user.email)) {
-          authErr = "This login is for Jon only.";
-          clearAuth();
+      if (finishAuthSession(data)) return;
+      if (res.ok) {
+        return authRequest("/token?grant_type=password", { email: form.email, password: form.password }).then(function (tokenRes) {
+          const tokenData = tokenRes.json || {};
+          if (finishAuthSession(tokenData)) return;
+          authErr = authFailMessage(tokenData, "Could not sign in.");
           renderLogin();
-          return;
-        }
-        afterAuth(data);
-        return;
+        });
       }
-      authErr = "Check your email, then Sign in.";
+      authErr = authFailMessage(data, "Could not create account.");
       renderLogin();
     });
   }
@@ -1079,23 +1086,23 @@
   }
   function renderLogin() {
     setDock(false);
-    const form = {
-      email: (document.getElementById("auth-email") || {}).value || "",
-      password: (document.getElementById("auth-pass") || {}).value || ""
-    };
+    const email = (document.getElementById("auth-email") || {}).value || "";
+    const password = (document.getElementById("auth-pass") || {}).value || "";
     let html = '<div class="login">';
     html += '<div class="brand"><img src="icon-192.png" alt="" onerror="this.onerror=null;this.src=\'icon.svg\'">BotFit</div>';
     html += '<p class="hero-kicker">Jon\'s gym</p>';
     html += "<h1>Sign in</h1>";
     html += '<p class="lede">Email and password. Then Home — no settings maze.</p>';
     if (authErr) html += '<p class="auth-err">' + esc(authErr) + "</p>";
-    html += '<label class="field"><span>Email</span><input type="email" id="auth-email" autocomplete="username" placeholder="jon@pushdmg.com" value="' + esc(form.email) + '"></label>';
-    html += '<label class="field"><span>Password</span><input type="password" id="auth-pass" autocomplete="current-password" value="' + esc(form.password) + '"></label>';
+    html += '<label class="field"><span>Email</span><input type="email" id="auth-email" autocomplete="username" placeholder="jon@pushdmg.com" value="' + esc(email) + '"></label>';
+    html += '<label class="field"><span>Password</span><input type="password" id="auth-pass" autocomplete="current-password"></label>';
     html += '<div class="actions">';
     html += '<button type="button" class="btn btn-primary" data-act="signin">Sign in</button>';
     html += '<button type="button" class="btn btn-ghost" data-act="signup">Create account</button>';
     html += "</div></div>";
     $app.innerHTML = html;
+    const passEl = document.getElementById("auth-pass");
+    if (passEl) passEl.value = password;
   }
   function toggleWarmup(id) {
     if (!id || !isAuthed()) return;
@@ -2090,7 +2097,7 @@
   document.addEventListener("visibilitychange", function () {
     if (document.visibilityState === "visible") {
       if (state.rest) tickRest();
-      render();
+      if (isAuthed()) render();
     }
   });
 
