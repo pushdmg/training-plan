@@ -1263,7 +1263,7 @@
     if (log.completed) {
       html += '<p class="hint">Logged for ' + esc(iso(date)) + ". Green dot on the day picker.</p>";
     }
-    html += '<p class="install">Add to Home Screen from the browser share menu. Works offline after the first open on a local server (not file://).</p>';
+    html += '<p class="install">Add to Home Screen from the share menu.</p>';
     html += "</div>";
 
     html += '<div class="pin-log">';
@@ -1493,8 +1493,6 @@
     html += '<button type="button" class="btn btn-danger" data-act="skip-ex">' + (ex.optional ? "Skip" : "Skip exercise") + "</button>";
     html += "</div></div>";
     $app.innerHTML = html;
-    const main = $app.querySelector(".ex-main");
-    if (main) main.scrollTop = 0;
   }
 
   function circuitKey(exId) {
@@ -1786,20 +1784,63 @@
     document.documentElement.classList.toggle("has-dock", !!on);
   }
 
-  let lastRenderedView = null;
+  let lastScreenKey = null;
+  let renderGen = 0;
+  let scrollRaf = 0;
+
+  function screenKey() {
+    if (state.view === "exercise") return "exercise:" + state.exIndex + ":" + state.round;
+    return state.view;
+  }
+
+  function captureScroll() {
+    const main = document.querySelector(".ex-main");
+    const pin = document.querySelector(".pin-log");
+    return {
+      y: window.scrollY || 0,
+      main: main ? main.scrollTop : 0,
+      pin: pin ? pin.scrollTop : 0
+    };
+  }
+
+  function applyScroll(pos, reset) {
+    if (scrollRaf) {
+      cancelAnimationFrame(scrollRaf);
+      scrollRaf = 0;
+    }
+    const gen = renderGen;
+    function put() {
+      if (gen !== renderGen) return;
+      const y = reset ? 0 : (pos && pos.y) || 0;
+      const mainY = reset ? 0 : (pos && pos.main) || 0;
+      const pinY = reset ? 0 : (pos && pos.pin) || 0;
+      window.scrollTo(0, y);
+      const main = document.querySelector(".ex-main");
+      const pin = document.querySelector(".pin-log");
+      if (main) main.scrollTop = mainY;
+      if (pin) pin.scrollTop = pinY;
+    }
+    put();
+    scrollRaf = requestAnimationFrame(function () {
+      scrollRaf = 0;
+      put();
+    });
+  }
+
   function render() {
+    const gen = ++renderGen;
     persistUI();
+    const pos = captureScroll();
+    const prevKey = lastScreenKey;
     if (!isAuthed()) {
       setDock(false);
       renderLogin();
-      lastRenderedView = "login";
+      if (gen !== renderGen) return;
+      lastScreenKey = "login";
       renderOverlay();
-      window.scrollTo(0, 0);
+      applyScroll(pos, true);
       return;
     }
-    const prevView = lastRenderedView;
-    const sameView = prevView === state.view;
-    const keepY = sameView && state.view === "home" ? window.scrollY : 0;
     const dock = state.view === "home" || state.view === "warmup" || state.view === "exercise" || state.view === "mobility" || state.view === "off";
     setDock(dock);
     if (state.view === "home") renderHome();
@@ -1811,10 +1852,11 @@
     else if (state.view === "off") renderMobility();
     else if (state.view === "done") renderDone();
     else renderHome();
-    lastRenderedView = state.view;
+    if (gen !== renderGen) return;
+    const key = screenKey();
+    lastScreenKey = key;
     renderOverlay();
-    if (!sameView) window.scrollTo(0, 0);
-    else if (state.view === "home") window.scrollTo(0, keepY);
+    applyScroll(pos, prevKey !== key);
   }
 
   function startSession() {
@@ -1913,7 +1955,7 @@
         }
       }
       persistUI();
-      if (state.view === "intervals") renderIntervals();
+      if (state.view === "intervals") render();
     }, 1000);
   }
 
