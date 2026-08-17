@@ -1627,7 +1627,6 @@
 
     html += "<h2>" + esc(ex.name) + "</h2>";
     html += '<div class="where"><span class="pin">USE</span><div>' + esc(ex.where) + "</div></div>";
-    html += liftStillHtml(exId);
     html += "<h3>Setup</h3><div class=\"card step-copy\"><p>" + esc(ex.setup) + "</p></div>";
     html += "<h3>Form cues</h3><ul class=\"cues\">";
     (ex.teachCues || []).forEach(function (c) { html += "<li>" + esc(c) + "</li>"; });
@@ -1751,14 +1750,6 @@
       return exId + "::r" + state.round;
     }
     return exId;
-  }
-
-  function liftStillHtml(exId) {
-    const ex = D.exercises[exId] || {};
-    const draw = (window.liftStill && window.liftStill(exId)) || "";
-    let html = '<div class="lift-still">' + draw + "</div>";
-    if (ex.teachShow) html += '<p class="hint lift-still-cap">' + esc(ex.teachShow) + "</p>";
-    return html;
   }
 
   function renderRide() {
