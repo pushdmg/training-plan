@@ -928,10 +928,19 @@
       render();
       return;
     }
-    renderOverlay();
+    updateRestClock(left);
+  }
+  function updateRestClock(left) {
+    const clock = $overlay.querySelector(".clock");
+    if (!clock) {
+      renderOverlay();
+      return;
+    }
+    clock.textContent = fmtClock(left);
   }
   function skipRest() {
-    const after = state.rest && state.rest.after;
+    if (!state.rest) return;
+    const after = state.rest.after;
     if (restTimer) clearInterval(restTimer);
     restTimer = null;
     state.rest = null;
@@ -2081,13 +2090,27 @@
     }
     const left = Math.max(0, (state.rest.ends - Date.now()) / 1000);
     const go = left <= 0;
+    const clockText = go ? "GO" : fmtClock(left);
+    const subText = go ? "Next set." : "Stay on this screen. It will buzz and beep if the browser allows.";
+    const btnText = go ? "Continue" : "Skip rest";
     $overlay.hidden = false;
+    const clock = $overlay.querySelector(".clock");
+    const btn = $overlay.querySelector('[data-act="skip-rest"]');
+    if (clock && btn && !$overlay.querySelector(".watch-sheet")) {
+      clock.textContent = clockText;
+      const title = $overlay.querySelector("h2");
+      const sub = $overlay.querySelector(".sub");
+      if (title) title.textContent = state.rest.label;
+      if (sub) sub.textContent = subText;
+      btn.textContent = btnText;
+      return;
+    }
     $overlay.innerHTML =
-      '<div class="sheet"><div class="clock">' + (go ? "GO" : fmtClock(left)) + "</div><h2>" +
+      '<div class="sheet"><div class="clock">' + clockText + "</div><h2>" +
       esc(state.rest.label) + '</h2><p class="sub">' +
-      (go ? "Next set." : "Stay on this screen. It will buzz and beep if the browser allows.") +
+      subText +
       '</p><div class="actions"><button type="button" class="btn btn-primary" data-act="skip-rest">' +
-      (go ? "Continue" : "Skip rest") + "</button></div></div>";
+      btnText + "</button></div></div>";
   }
 
   function persistUI() {
@@ -2546,6 +2569,14 @@
     const t = e.target.closest("[data-act='log']");
     if (!t) return;
     writeSet(state.selectedDate, t.getAttribute("data-ex"), Number(t.getAttribute("data-set")), t.getAttribute("data-field"), t.value);
+  });
+
+  $overlay.addEventListener("pointerdown", function (e) {
+    const t = e.target.closest("[data-act]");
+    if (t && t.getAttribute("data-act") === "skip-rest") {
+      e.preventDefault();
+      skipRest();
+    }
   });
 
   $overlay.addEventListener("click", function (e) {
