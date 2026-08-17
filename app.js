@@ -37,7 +37,8 @@
     calMonth: null,
     showCal: false,
     leaveKind: null,
-    leaveReturn: null
+    leaveReturn: null,
+    watchUrl: null
   };
 
   let restTimer = null;
@@ -1605,8 +1606,13 @@
     const stepLabel = isCircuit
       ? "R" + (state.round + 1) + " · " + (state.exIndex + 1) + "/" + list.length
       : (state.exIndex + 1) + " of " + list.length;
+    const canBack = state.exIndex > 0 || (isCircuit && state.round > 0) || dayMeta(date).type === "lift";
+    const canNext = state.exIndex < list.length - 1 || (isCircuit && state.round + 1 < circuitRounds(week, log.highStress));
     html +=
-      '<div class="navrow"><button type="button" class="back" data-act="leave">← Home</button><button type="button" class="back" data-act="ex-back">← Back</button><div class="progress">' +
+      '<div class="navrow"><button type="button" class="back" data-act="leave">← Home</button><div class="nav-lifts">' +
+      '<button type="button" class="back" data-act="ex-back"' + (canBack ? "" : " disabled") + ">← Back</button>" +
+      '<button type="button" class="back" data-act="ex-next"' + (canNext ? "" : " disabled") + ">Next</button>" +
+      '</div><div class="progress">' +
       stepLabel + "</div></div>";
 
     if (isCircuit) {
@@ -1628,10 +1634,7 @@
     html += "</ul>";
     var started = isLiftStarted(log, key);
     if (!started && ex.watchUrl) {
-      html +=
-        '<a class="btn btn-ghost watch-lift" href="' +
-        esc(ex.watchUrl) +
-        '" target="_blank" rel="noopener">Watch</a>';
+      html += '<button type="button" class="btn btn-ghost watch-lift" data-act="watch-lift">Watch</button>';
     }
     if (!isLiftStarted(log, key)) {
       html += "</div>";
@@ -2009,7 +2012,77 @@
     render();
   }
 
+  function youtubeId(url) {
+    if (!url) return "";
+    const s = String(url);
+    let m = s.match(/youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/);
+    if (m) return m[1];
+    m = s.match(/[?&]v=([a-zA-Z0-9_-]{11})/);
+    if (m) return m[1];
+    m = s.match(/youtu\.be\/([a-zA-Z0-9_-]{11})/);
+    if (m) return m[1];
+    m = s.match(/\/embed\/([a-zA-Z0-9_-]{11})/);
+    if (m) return m[1];
+    return "";
+  }
+  function openWatch(url) {
+    state.watchUrl = url;
+    render();
+  }
+  function closeWatch() {
+    state.watchUrl = null;
+  }
+  function goLift(delta) {
+    closeWatch();
+    const date = state.selectedDate;
+    const list = currentExerciseList();
+    const isCircuit = dayMeta(date).type === "sat" && state.satChoice === "circuit";
+    const n = list.length;
+    const idx = state.exIndex + delta;
+    if (isCircuit && n) {
+      if (idx < 0) {
+        if (state.round > 0) {
+          state.round -= 1;
+          state.exIndex = n - 1;
+          state.currentSet = 0;
+        }
+      } else if (idx >= n) {
+        const rounds = circuitRounds(weekNumber(date), dayLog(date).highStress);
+        if (state.round + 1 < rounds) {
+          state.round += 1;
+          state.exIndex = 0;
+          state.currentSet = 0;
+        }
+      } else {
+        state.exIndex = idx;
+        state.currentSet = 0;
+      }
+    } else if (idx < 0) {
+      if (dayMeta(date).type === "lift") {
+        state.view = "warmup";
+        state.currentSet = 0;
+      }
+    } else if (idx < n) {
+      state.exIndex = idx;
+      state.currentSet = 0;
+    }
+    render();
+  }
+
   function renderOverlay() {
+    if (state.watchUrl) {
+      const id = youtubeId(state.watchUrl);
+      $overlay.hidden = false;
+      $overlay.innerHTML =
+        '<div class="sheet watch-sheet"><button type="button" class="btn btn-ghost watch-close" data-act="close-watch">Close</button>' +
+        (id
+          ? '<div class="watch-frame"><iframe src="https://www.youtube-nocookie.com/embed/' +
+            esc(id) +
+            '?playsinline=1&rel=0" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe></div>'
+          : "") +
+        "</div>";
+      return;
+    }
     if (!state.rest) {
       $overlay.hidden = true;
       $overlay.innerHTML = "";
@@ -2362,21 +2435,16 @@
       state.view = "exercise";
       render();
     } else if (act === "start-lift") {
+      closeWatch();
       markLiftStarted(circuitKey(currentExerciseList()[state.exIndex]));
       render();
+    } else if (act === "watch-lift") {
+      const ex = D.exercises[currentExerciseList()[state.exIndex]];
+      if (ex && ex.watchUrl) openWatch(ex.watchUrl);
     } else if (act === "ex-back") {
-      if (state.exIndex > 0) { state.exIndex -= 1; state.currentSet = 0; }
-      else if (state.round > 0) { state.round -= 1; state.exIndex = currentExerciseList().length - 1; state.currentSet = 0; }
-      else {
-        const meta = dayMeta(state.selectedDate);
-        if (meta.type === "lift") {
-          state.view = "warmup";
-        } else {
-          requestLeave();
-          return;
-        }
-      }
-      render();
+      goLift(-1);
+    } else if (act === "ex-next") {
+      goLift(1);
     } else if (act === "focus-set") {
       state.currentSet = Number(t.getAttribute("data-set"));
       render();
@@ -2491,8 +2559,14 @@
 
   $overlay.addEventListener("click", function (e) {
     const t = e.target.closest("[data-act]");
-    if (!t) return;
-    if (t.getAttribute("data-act") === "skip-rest") skipRest();
+    if (t && t.getAttribute("data-act") === "skip-rest") {
+      skipRest();
+      return;
+    }
+    if ((t && t.getAttribute("data-act") === "close-watch") || (state.watchUrl && e.target === $overlay)) {
+      closeWatch();
+      render();
+    }
   });
 
   document.addEventListener("visibilitychange", function () {
