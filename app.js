@@ -260,9 +260,15 @@
     const id = liftBaseId(exId);
     if (id !== "assisted-pullup" && id !== "assisted-dip") return "";
     const ex = D.exercises[id];
-    const fromData = ex && ex.seedWeight != null ? String(ex.seedWeight).trim() : "";
-    if (fromData && fromData !== "0") return fromData;
-    return id === "assisted-dip" ? "110" : "100";
+    let seed = id === "assisted-dip" ? 110 : 100;
+    if (ex && ex.seedWeight != null) {
+      const n = parseFloat(ex.seedWeight);
+      if (isFinite(n) && n > 0) seed = n;
+    }
+    const top = ex && ex.stackTop != null ? parseFloat(ex.stackTop) : NaN;
+    if (isFinite(top) && top > 0 && seed > top) seed = top;
+    if (!(seed > 0)) seed = id === "assisted-dip" ? 110 : 100;
+    return String(seed);
   }
   function defaultReps(ex) {
     return String((ex && ex.reps) || "").split(/[^\d]/)[0] || "8";
