@@ -1140,6 +1140,11 @@
     if (log.smoked) rec.smoked = log.smoked;
     try { localStorage.setItem(LAST, JSON.stringify(rec)); } catch (e) {}
   }
+  function refreshLastSession(date) {
+    const log = dayLog(date);
+    const status = log.status === "incomplete" || log.status === "skipped" ? log.status : "done";
+    writeLastSession(date, status, log.reason);
+  }
   function dayClosed(log) {
     return !!(log && (log.completed || log.status === "incomplete" || log.status === "skipped"));
   }
@@ -1981,16 +1986,17 @@
     const feels = [
       ["easy", "Easy"],
       ["right", "Right"],
-      ["hard", "Hard"],
-      ["too_hard", "Too hard"]
+      ["hard", "Hard"]
     ];
+    const feelOn = log.feel || "right";
+    const rideDay = meta.type === "ride" || (log.satChoice || state.satChoice) === "ride";
     let html = topbar(week);
     html += "<h2>How did that workout feel?</h2>";
     html += '<div class="feel-grid">';
     feels.forEach(function (f) {
       html +=
         '<button type="button" class="feel-btn' +
-        (log.feel === f[0] ? " is-on" : "") +
+        (feelOn === f[0] ? " is-on" : "") +
         '" data-act="feel" data-val="' +
         f[0] +
         '">' +
@@ -1998,28 +2004,18 @@
         "</button>";
     });
     html += "</div>";
-    html += '<span class="tracker-label">RPE (optional)</span><div class="seg rpe">';
-    for (let i = 1; i <= 10; i++) {
-      html +=
-        '<button type="button" data-act="rpe" data-val="' +
-        i +
-        '" class="' +
-        (Number(log.rpe) === i ? "is-on" : "") +
-        '">' +
-        i +
-        "</button>";
-    }
-    html += "</div>";
-    html +=
-      '<label class="field"><span>Note (optional)</span><textarea data-act="feel-note" placeholder="Anything worth remembering">' +
-      esc(log.feel_note || "") +
-      "</textarea></label>";
-    if (!log.feel) {
-      html += '<p class="hint">Tap how it felt before you leave if you can.</p>';
+    if (rideDay) {
+      html += '<span class="tracker-label">Smoked for work?</span><div class="seg two">';
+      html += '<button type="button" data-act="track" data-field="smoked" data-val="Y" class="' +
+        (log.smoked === "Y" ? "is-on" : "") + '">Yes</button>';
+      html += '<button type="button" data-act="track" data-field="smoked" data-val="N" class="' +
+        (log.smoked === "N" ? "is-on" : "") + '">No</button>';
+      html += "</div>";
     }
     html += '<div class="done-mark">✓</div>';
     html += "<h2>Session logged.</h2>";
     html += '<p class="lede">' + esc(meta.title) + " · " + esc(prettyDate(date)) + "</p>";
+    html += '<div class="actions"><button type="button" class="btn btn-primary" data-act="back-home">Back home</button></div>';
     html += '<div class="card">';
     if (!rows.length) {
       html += "<p>Nothing logged — still counts if you showed up and moved.</p>";
@@ -2029,27 +2025,6 @@
       });
     }
     html += "</div>";
-    html += "<h3>Optional tracker</h3>";
-    html += '<p class="hint">One line. Skip if you want to walk out.</p>';
-    html += '<span class="tracker-label">Sleep 1–5</span><div class="seg">';
-    for (let i = 1; i <= 5; i++) {
-      html += '<button type="button" data-act="track" data-field="sleep" data-val="' + i + '" class="' +
-        (log.sleep === i ? "is-on" : "") + '">' + i + "</button>";
-    }
-    html += "</div>";
-    html += '<span class="tracker-label">Work-stress 1–5</span><div class="seg">';
-    for (let i = 1; i <= 5; i++) {
-      html += '<button type="button" data-act="track" data-field="stress" data-val="' + i + '" class="' +
-        (log.stress === i ? "is-on" : "") + '">' + i + "</button>";
-    }
-    html += "</div>";
-    html += '<span class="tracker-label">Smoked for work?</span><div class="seg two">';
-    html += '<button type="button" data-act="track" data-field="smoked" data-val="Y" class="' +
-      (log.smoked === "Y" ? "is-on" : "") + '">Yes</button>';
-    html += '<button type="button" data-act="track" data-field="smoked" data-val="N" class="' +
-      (log.smoked === "N" ? "is-on" : "") + '">No</button>';
-    html += "</div>";
-    html += '<div class="actions"><button type="button" class="btn btn-primary" data-act="back-home">Back home</button></div>';
     $app.innerHTML = html;
   }
 
@@ -2582,11 +2557,13 @@
       let val = t.getAttribute("data-val");
       if (field !== "smoked") val = Number(val);
       patchDay(state.selectedDate, function (log) { log[field] = val; });
+      if (field === "smoked") refreshLastSession(state.selectedDate);
       scheduleSync(state.selectedDate);
       render();
     } else if (act === "feel") {
       patchDay(state.selectedDate, function (log) { log.feel = t.getAttribute("data-val"); });
       applyFeelAdjustments(state.selectedDate);
+      refreshLastSession(state.selectedDate);
       syncSession(state.selectedDate);
       render();
     } else if (act === "rpe") {
