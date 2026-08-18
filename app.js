@@ -302,13 +302,17 @@
   function defaultReps(ex) {
     return String((ex && ex.reps) || "").split(/[^\d]/)[0] || "8";
   }
+  function nonzeroField(v) {
+    const s = String(v == null ? "" : v).trim();
+    return !s || s === "0" ? "" : s;
+  }
   function lastSetValuesBefore(exId, date, setIdx) {
     const want = liftBaseId(exId);
     const out = { weight: "", reps: "", time: "" };
     function consider(row) {
       if (!row) return false;
-      const w = String(row.weight || "").trim();
-      const r = String(row.reps || "").trim();
+      const w = nonzeroField(row.weight);
+      const r = nonzeroField(row.reps);
       const t = String(row.time || "").trim();
       if (!w && !r && !t && !(row.logged === true && row.done === true)) return false;
       if (w) out.weight = w;
@@ -360,7 +364,7 @@
     }
     return {
       weight: weight,
-      reps: String(s.reps || "").trim() || last.reps || defaultReps(ex),
+      reps: nonzeroField(s.reps) || nonzeroField(last.reps) || defaultReps(ex),
       time: String(s.time || "").trim() || last.time || (ex && ex.hold ? String(ex.hold) : ""),
       note: s.note == null ? "" : String(s.note)
     };
@@ -372,9 +376,12 @@
     return el ? String(el.value) : null;
   }
   function pickScreenField(key, idx, field, fallback) {
+    const shown = fallback == null ? "" : String(fallback).trim();
     const raw = readStepperField(key, idx, field);
-    if (raw != null) return String(raw).trim();
-    return fallback == null ? "" : String(fallback);
+    const live = raw == null ? "" : String(raw).trim();
+    if (live && live !== "0") return live;
+    if (live === "0" && (!shown || shown === "0")) return live;
+    return shown;
   }
   function commitScreenSet(date, key, idx, ex) {
     const row = isolateSet(((dayLog(date).exercises || {})[key] || [])[idx]);
@@ -385,9 +392,9 @@
       return after.done === true || after.logged === true;
     }
     const vals = {
-      weight: pickScreenField(key, idx, "weight", shown.weight),
-      reps: pickScreenField(key, idx, "reps", shown.reps),
-      time: pickScreenField(key, idx, "time", shown.time),
+      weight: pickScreenField(key, idx, "weight", shown.weight) || shown.weight,
+      reps: pickScreenField(key, idx, "reps", shown.reps) || shown.reps,
+      time: pickScreenField(key, idx, "time", shown.time) || shown.time,
       note: pickScreenField(key, idx, "note", shown.note)
     };
     if (ex.log === "weight-reps" || ex.log === "weight-time") {
@@ -408,9 +415,12 @@
   function prefillSetFrom(date, key, fromIdx, toIdx) {
     const src = isolateSet(((dayLog(date).exercises || {})[key] || [])[fromIdx]);
     if (!setHasValue(src)) return;
-    if (String(src.weight || "").trim()) writeSet(date, key, toIdx, "weight", String(src.weight));
-    if (String(src.reps || "").trim()) writeSet(date, key, toIdx, "reps", String(src.reps));
-    if (String(src.time || "").trim()) writeSet(date, key, toIdx, "time", String(src.time));
+    const w = String(src.weight || "").trim();
+    const r = nonzeroField(src.reps);
+    const t = String(src.time || "").trim();
+    if (w && w !== "0") writeSet(date, key, toIdx, "weight", w);
+    if (r) writeSet(date, key, toIdx, "reps", r);
+    if (t) writeSet(date, key, toIdx, "time", t);
   }
   function isLiftStarted(log, key) {
     if (!log || !key) return false;
