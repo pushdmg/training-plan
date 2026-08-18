@@ -128,7 +128,11 @@
       .replace(/"/g, "&quot;");
   }
 
-  function loadAuth() {
+  let authMem = null;
+  function validAuth(rec) {
+    return !!(rec && rec.access_token && rec.user && rec.user.id);
+  }
+  function readStoredAuth() {
     try {
       const raw = JSON.parse(localStorage.getItem(AUTH) || "null");
       return raw && typeof raw === "object" ? raw : null;
@@ -136,15 +140,26 @@
       return null;
     }
   }
+  function loadAuth() {
+    if (validAuth(authMem)) return authMem;
+    const stored = readStoredAuth();
+    if (validAuth(stored)) {
+      authMem = stored;
+      return authMem;
+    }
+    return validAuth(authMem) ? authMem : null;
+  }
   function saveAuth(rec) {
+    if (!validAuth(rec)) return;
+    authMem = rec;
     try { localStorage.setItem(AUTH, JSON.stringify(rec)); } catch (e) {}
   }
   function clearAuth() {
+    authMem = null;
     try { localStorage.removeItem(AUTH); } catch (e) {}
   }
   function isAuthed() {
-    const a = loadAuth();
-    return !!(a && a.access_token && a.user && a.user.id);
+    return validAuth(loadAuth());
   }
   function allowedEmail() {
     return String((sbCfg() && sbCfg().allowedEmail) || "jon@pushdmg.com").toLowerCase();
@@ -287,13 +302,17 @@
   function defaultReps(ex) {
     return String((ex && ex.reps) || "").split(/[^\d]/)[0] || "8";
   }
+  function nonzeroField(v) {
+    const s = String(v == null ? "" : v).trim();
+    return !s || s === "0" ? "" : s;
+  }
   function lastSetValuesBefore(exId, date, setIdx) {
     const want = liftBaseId(exId);
     const out = { weight: "", reps: "", time: "" };
     function consider(row) {
       if (!row) return false;
-      const w = String(row.weight || "").trim();
-      const r = String(row.reps || "").trim();
+      const w = nonzeroField(row.weight);
+      const r = nonzeroField(row.reps);
       const t = String(row.time || "").trim();
       if (!w && !r && !t && !(row.logged === true && row.done === true)) return false;
       if (w) out.weight = w;
@@ -345,7 +364,7 @@
     }
     return {
       weight: weight,
-      reps: String(s.reps || "").trim() || last.reps || defaultReps(ex),
+      reps: nonzeroField(s.reps) || nonzeroField(last.reps) || defaultReps(ex),
       time: String(s.time || "").trim() || last.time || (ex && ex.hold ? String(ex.hold) : ""),
       note: s.note == null ? "" : String(s.note)
     };
@@ -357,9 +376,12 @@
     return el ? String(el.value) : null;
   }
   function pickScreenField(key, idx, field, fallback) {
+    const shown = fallback == null ? "" : String(fallback).trim();
     const raw = readStepperField(key, idx, field);
-    if (raw != null) return String(raw).trim();
-    return fallback == null ? "" : String(fallback);
+    const live = raw == null ? "" : String(raw).trim();
+    if (live && live !== "0") return live;
+    if (live === "0" && (!shown || shown === "0")) return live;
+    return shown;
   }
   function commitScreenSet(date, key, idx, ex) {
     const row = isolateSet(((dayLog(date).exercises || {})[key] || [])[idx]);
@@ -370,9 +392,9 @@
       return after.done === true || after.logged === true;
     }
     const vals = {
-      weight: pickScreenField(key, idx, "weight", shown.weight),
-      reps: pickScreenField(key, idx, "reps", shown.reps),
-      time: pickScreenField(key, idx, "time", shown.time),
+      weight: pickScreenField(key, idx, "weight", shown.weight) || shown.weight,
+      reps: pickScreenField(key, idx, "reps", shown.reps) || shown.reps,
+      time: pickScreenField(key, idx, "time", shown.time) || shown.time,
       note: pickScreenField(key, idx, "note", shown.note)
     };
     if (ex.log === "weight-reps" || ex.log === "weight-time") {
@@ -393,9 +415,12 @@
   function prefillSetFrom(date, key, fromIdx, toIdx) {
     const src = isolateSet(((dayLog(date).exercises || {})[key] || [])[fromIdx]);
     if (!setHasValue(src)) return;
-    if (String(src.weight || "").trim()) writeSet(date, key, toIdx, "weight", String(src.weight));
-    if (String(src.reps || "").trim()) writeSet(date, key, toIdx, "reps", String(src.reps));
-    if (String(src.time || "").trim()) writeSet(date, key, toIdx, "time", String(src.time));
+    const w = String(src.weight || "").trim();
+    const r = nonzeroField(src.reps);
+    const t = String(src.time || "").trim();
+    if (w && w !== "0") writeSet(date, key, toIdx, "weight", w);
+    if (r) writeSet(date, key, toIdx, "reps", r);
+    if (t) writeSet(date, key, toIdx, "time", t);
   }
   function isLiftStarted(log, key) {
     if (!log || !key) return false;
@@ -1140,6 +1165,11 @@
     if (log.smoked) rec.smoked = log.smoked;
     try { localStorage.setItem(LAST, JSON.stringify(rec)); } catch (e) {}
   }
+  function refreshLastSession(date) {
+    const log = dayLog(date);
+    const status = log.status === "incomplete" || log.status === "skipped" ? log.status : "done";
+    writeLastSession(date, status, log.reason);
+  }
   function dayClosed(log) {
     return !!(log && (log.completed || log.status === "incomplete" || log.status === "skipped"));
   }
@@ -1280,6 +1310,21 @@
     }
     return -1;
   }
+  function landOnOpenSet() {
+    const date = state.selectedDate;
+    const list = currentExerciseList();
+    const exId = list[state.exIndex];
+    if (!exId) {
+      state.currentSet = 0;
+      return;
+    }
+    const key = circuitKey(exId);
+    const ex = D.exercises[exId];
+    const isCircuit = dayMeta(date).type === "sat" && state.satChoice === "circuit";
+    const nSets = isCircuit ? 1 : setsFor(ex, weekNumber(date), dayLog(date).highStress, date);
+    const open = firstOpenSet(dayLog(date), key, nSets);
+    state.currentSet = open >= 0 ? open : Math.max(0, nSets - 1);
+  }
   function findResumePoint(date) {
     const meta = dayMeta(date);
     const log = dayLog(date);
@@ -1337,6 +1382,9 @@
     if (!stashAuth(data)) return false;
     authErr = "";
     state.view = "home";
+    try {
+      if (history.replaceState) history.replaceState(null, "", location.href);
+    } catch (e) {}
     upsertAthlete(data.user);
     flushQueue();
     render();
@@ -1465,9 +1513,10 @@
     const headers = {};
     if (a && a.access_token) headers.Authorization = "Bearer " + a.access_token;
     authRequest("/logout", {}, headers).catch(function () {});
-    clearAuth();
     authErr = "";
     state.view = "home";
+    persistUI();
+    clearAuth();
     render();
   }
   function renderLogin() {
@@ -1981,16 +2030,18 @@
     const feels = [
       ["easy", "Easy"],
       ["right", "Right"],
-      ["hard", "Hard"],
-      ["too_hard", "Too hard"]
+      ["hard", "Hard"]
     ];
-    let html = topbar(week);
+    const feelOn = log.feel || "right";
+    const rideDay = meta.type === "ride" || (log.satChoice || state.satChoice) === "ride";
+    let html = '<div class="ex-main">';
+    html += topbar(week);
     html += "<h2>How did that workout feel?</h2>";
     html += '<div class="feel-grid">';
     feels.forEach(function (f) {
       html +=
         '<button type="button" class="feel-btn' +
-        (log.feel === f[0] ? " is-on" : "") +
+        (feelOn === f[0] ? " is-on" : "") +
         '" data-act="feel" data-val="' +
         f[0] +
         '">' +
@@ -1998,24 +2049,13 @@
         "</button>";
     });
     html += "</div>";
-    html += '<span class="tracker-label">RPE (optional)</span><div class="seg rpe">';
-    for (let i = 1; i <= 10; i++) {
-      html +=
-        '<button type="button" data-act="rpe" data-val="' +
-        i +
-        '" class="' +
-        (Number(log.rpe) === i ? "is-on" : "") +
-        '">' +
-        i +
-        "</button>";
-    }
-    html += "</div>";
-    html +=
-      '<label class="field"><span>Note (optional)</span><textarea data-act="feel-note" placeholder="Anything worth remembering">' +
-      esc(log.feel_note || "") +
-      "</textarea></label>";
-    if (!log.feel) {
-      html += '<p class="hint">Tap how it felt before you leave if you can.</p>';
+    if (rideDay) {
+      html += '<span class="tracker-label">Smoked for work?</span><div class="seg two">';
+      html += '<button type="button" data-act="track" data-field="smoked" data-val="Y" class="' +
+        (log.smoked === "Y" ? "is-on" : "") + '">Yes</button>';
+      html += '<button type="button" data-act="track" data-field="smoked" data-val="N" class="' +
+        (log.smoked === "N" ? "is-on" : "") + '">No</button>';
+      html += "</div>";
     }
     html += '<div class="done-mark">✓</div>';
     html += "<h2>Session logged.</h2>";
@@ -2028,28 +2068,10 @@
         html += '<div class="recap-row"><b>' + esc(r.name) + "</b><span>" + esc(r.detail) + "</span></div>";
       });
     }
-    html += "</div>";
-    html += "<h3>Optional tracker</h3>";
-    html += '<p class="hint">One line. Skip if you want to walk out.</p>';
-    html += '<span class="tracker-label">Sleep 1–5</span><div class="seg">';
-    for (let i = 1; i <= 5; i++) {
-      html += '<button type="button" data-act="track" data-field="sleep" data-val="' + i + '" class="' +
-        (log.sleep === i ? "is-on" : "") + '">' + i + "</button>";
-    }
-    html += "</div>";
-    html += '<span class="tracker-label">Work-stress 1–5</span><div class="seg">';
-    for (let i = 1; i <= 5; i++) {
-      html += '<button type="button" data-act="track" data-field="stress" data-val="' + i + '" class="' +
-        (log.stress === i ? "is-on" : "") + '">' + i + "</button>";
-    }
-    html += "</div>";
-    html += '<span class="tracker-label">Smoked for work?</span><div class="seg two">';
-    html += '<button type="button" data-act="track" data-field="smoked" data-val="Y" class="' +
-      (log.smoked === "Y" ? "is-on" : "") + '">Yes</button>';
-    html += '<button type="button" data-act="track" data-field="smoked" data-val="N" class="' +
-      (log.smoked === "N" ? "is-on" : "") + '">No</button>';
-    html += "</div>";
-    html += '<div class="actions"><button type="button" class="btn btn-primary" data-act="back-home">Back home</button></div>';
+    html += "</div></div>";
+    html += '<div class="pin-log"><div class="actions">';
+    html += '<button type="button" class="btn btn-primary" data-act="back-home">Back home</button>';
+    html += "</div></div>";
     $app.innerHTML = html;
   }
 
@@ -2136,18 +2158,18 @@
         if (state.round > 0) {
           state.round -= 1;
           state.exIndex = n - 1;
-          state.currentSet = 0;
+          landOnOpenSet();
         }
       } else if (idx >= n) {
         const rounds = circuitRounds(weekNumber(date), dayLog(date).highStress);
         if (state.round + 1 < rounds) {
           state.round += 1;
           state.exIndex = 0;
-          state.currentSet = 0;
+          landOnOpenSet();
         }
       } else {
         state.exIndex = idx;
-        state.currentSet = 0;
+        landOnOpenSet();
       }
     } else if (idx < 0) {
       if (dayMeta(date).type === "lift") {
@@ -2156,7 +2178,7 @@
       }
     } else if (idx < n) {
       state.exIndex = idx;
-      state.currentSet = 0;
+      landOnOpenSet();
     }
     render();
   }
@@ -2181,6 +2203,7 @@
   }
 
   function persistUI() {
+    if (!isAuthed()) return;
     try {
       localStorage.setItem(UI, JSON.stringify({
         view: state.view,
@@ -2195,6 +2218,7 @@
         leaveReturn: state.leaveReturn
       }));
     } catch (e) {}
+    if (validAuth(authMem)) saveAuth(authMem);
   }
   function restoreUI() {
     if (!isAuthed()) return;
@@ -2270,12 +2294,19 @@
     });
   }
 
+  function inSessionView(view) {
+    return view === "warmup" || view === "exercise" || view === "ride" ||
+      view === "intervals" || view === "mobility" || view === "save" ||
+      view === "why" || view === "done";
+  }
+
   function render() {
     const gen = ++renderGen;
-    persistUI();
+    const staySession = inSessionView(state.view) && validAuth(authMem);
+    if (isAuthed()) persistUI();
     const pos = captureScroll();
     const prevKey = lastScreenKey;
-    if (!isAuthed()) {
+    if (!isAuthed() && !staySession) {
       setDock(false);
       renderLogin();
       if (gen !== renderGen) return;
@@ -2284,7 +2315,7 @@
       applyScroll(pos, true);
       return;
     }
-    const dock = state.view === "home" || state.view === "warmup" || state.view === "exercise" || state.view === "mobility" || state.view === "off" || state.view === "save" || state.view === "why";
+    const dock = state.view === "home" || state.view === "warmup" || state.view === "exercise" || state.view === "mobility" || state.view === "off" || state.view === "save" || state.view === "why" || state.view === "done";
     setDock(dock);
     if (state.view === "home") renderHome();
     else if (state.view === "warmup") renderWarmup();
@@ -2515,8 +2546,8 @@
       doSignOut();
     } else if (act === "wu-continue") {
       state.exIndex = 0;
-      state.currentSet = 0;
       state.view = "exercise";
+      landOnOpenSet();
       render();
     } else if (act === "start-lift") {
       closeWatch();
@@ -2541,7 +2572,7 @@
     } else if (act === "next-ex" || act === "skip-ex") {
       state.logHint = "";
       state.exIndex += 1;
-      state.currentSet = 0;
+      landOnOpenSet();
       render();
     } else if (act === "start-hold") {
       ensureAudio();
@@ -2582,11 +2613,13 @@
       let val = t.getAttribute("data-val");
       if (field !== "smoked") val = Number(val);
       patchDay(state.selectedDate, function (log) { log[field] = val; });
+      if (field === "smoked") refreshLastSession(state.selectedDate);
       scheduleSync(state.selectedDate);
       render();
     } else if (act === "feel") {
       patchDay(state.selectedDate, function (log) { log.feel = t.getAttribute("data-val"); });
       applyFeelAdjustments(state.selectedDate);
+      refreshLastSession(state.selectedDate);
       syncSession(state.selectedDate);
       render();
     } else if (act === "rpe") {
@@ -2652,6 +2685,7 @@
   }
 
   try {
+    loadAuth();
     restoreUI();
     flushQueue();
     fetchExternalAndAdjust();
