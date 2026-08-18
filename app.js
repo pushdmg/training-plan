@@ -149,6 +149,20 @@
   function allowedEmail() {
     return String((sbCfg() && sbCfg().allowedEmail) || "jon@pushdmg.com").toLowerCase();
   }
+  function allowedEmails() {
+    const cfg = sbCfg() || {};
+    const list = [];
+    const extra = cfg.allowedEmails;
+    if (Array.isArray(extra)) {
+      extra.forEach(function (item) {
+        const email = cleanEmail(item);
+        if (email && list.indexOf(email) === -1) list.push(email);
+      });
+    }
+    const one = allowedEmail();
+    if (one && list.indexOf(one) === -1) list.unshift(one);
+    return list;
+  }
   function cleanEmail(email) {
     return String(email || "")
       .replace(/[\u200B-\u200D\u2060\uFEFF\u00A0]/g, "")
@@ -159,7 +173,7 @@
     return cleanEmail(email) || allowedEmail();
   }
   function emailAllowed(email) {
-    return cleanEmail(email) === allowedEmail();
+    return allowedEmails().indexOf(cleanEmail(email)) !== -1;
   }
   function sessionEmailOk(email) {
     const cleaned = cleanEmail(email);
