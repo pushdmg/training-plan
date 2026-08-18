@@ -128,7 +128,11 @@
       .replace(/"/g, "&quot;");
   }
 
-  function loadAuth() {
+  let authMem = null;
+  function validAuth(rec) {
+    return !!(rec && rec.access_token && rec.user && rec.user.id);
+  }
+  function readStoredAuth() {
     try {
       const raw = JSON.parse(localStorage.getItem(AUTH) || "null");
       return raw && typeof raw === "object" ? raw : null;
@@ -136,15 +140,26 @@
       return null;
     }
   }
+  function loadAuth() {
+    if (validAuth(authMem)) return authMem;
+    const stored = readStoredAuth();
+    if (validAuth(stored)) {
+      authMem = stored;
+      return authMem;
+    }
+    return validAuth(authMem) ? authMem : null;
+  }
   function saveAuth(rec) {
+    if (!validAuth(rec)) return;
+    authMem = rec;
     try { localStorage.setItem(AUTH, JSON.stringify(rec)); } catch (e) {}
   }
   function clearAuth() {
+    authMem = null;
     try { localStorage.removeItem(AUTH); } catch (e) {}
   }
   function isAuthed() {
-    const a = loadAuth();
-    return !!(a && a.access_token && a.user && a.user.id);
+    return validAuth(loadAuth());
   }
   function allowedEmail() {
     return String((sbCfg() && sbCfg().allowedEmail) || "jon@pushdmg.com").toLowerCase();
@@ -1337,6 +1352,9 @@
     if (!stashAuth(data)) return false;
     authErr = "";
     state.view = "home";
+    try {
+      if (history.replaceState) history.replaceState(null, "", location.href);
+    } catch (e) {}
     upsertAthlete(data.user);
     flushQueue();
     render();
@@ -1465,9 +1483,10 @@
     const headers = {};
     if (a && a.access_token) headers.Authorization = "Bearer " + a.access_token;
     authRequest("/logout", {}, headers).catch(function () {});
-    clearAuth();
     authErr = "";
     state.view = "home";
+    persistUI();
+    clearAuth();
     render();
   }
   function renderLogin() {
@@ -2181,6 +2200,7 @@
   }
 
   function persistUI() {
+    if (!isAuthed()) return;
     try {
       localStorage.setItem(UI, JSON.stringify({
         view: state.view,
@@ -2195,6 +2215,7 @@
         leaveReturn: state.leaveReturn
       }));
     } catch (e) {}
+    if (validAuth(authMem)) saveAuth(authMem);
   }
   function restoreUI() {
     if (!isAuthed()) return;
@@ -2270,12 +2291,19 @@
     });
   }
 
+  function inSessionView(view) {
+    return view === "warmup" || view === "exercise" || view === "ride" ||
+      view === "intervals" || view === "mobility" || view === "save" ||
+      view === "why" || view === "done";
+  }
+
   function render() {
     const gen = ++renderGen;
-    persistUI();
+    const staySession = inSessionView(state.view) && validAuth(authMem);
+    if (isAuthed()) persistUI();
     const pos = captureScroll();
     const prevKey = lastScreenKey;
-    if (!isAuthed()) {
+    if (!isAuthed() && !staySession) {
       setDock(false);
       renderLogin();
       if (gen !== renderGen) return;
@@ -2652,6 +2680,7 @@
   }
 
   try {
+    loadAuth();
     restoreUI();
     flushQueue();
     fetchExternalAndAdjust();
