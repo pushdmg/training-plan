@@ -1165,6 +1165,11 @@
     if (log.smoked) rec.smoked = log.smoked;
     try { localStorage.setItem(LAST, JSON.stringify(rec)); } catch (e) {}
   }
+  function refreshLastSession(date) {
+    const log = dayLog(date);
+    const status = log.status === "incomplete" || log.status === "skipped" ? log.status : "done";
+    writeLastSession(date, status, log.reason);
+  }
   function dayClosed(log) {
     return !!(log && (log.completed || log.status === "incomplete" || log.status === "skipped"));
   }
@@ -1304,6 +1309,21 @@
       if (!(isLoggedSet(s) || (s && s.done === true))) return i;
     }
     return -1;
+  }
+  function landOnOpenSet() {
+    const date = state.selectedDate;
+    const list = currentExerciseList();
+    const exId = list[state.exIndex];
+    if (!exId) {
+      state.currentSet = 0;
+      return;
+    }
+    const key = circuitKey(exId);
+    const ex = D.exercises[exId];
+    const isCircuit = dayMeta(date).type === "sat" && state.satChoice === "circuit";
+    const nSets = isCircuit ? 1 : setsFor(ex, weekNumber(date), dayLog(date).highStress, date);
+    const open = firstOpenSet(dayLog(date), key, nSets);
+    state.currentSet = open >= 0 ? open : Math.max(0, nSets - 1);
   }
   function findResumePoint(date) {
     const meta = dayMeta(date);
@@ -2010,16 +2030,18 @@
     const feels = [
       ["easy", "Easy"],
       ["right", "Right"],
-      ["hard", "Hard"],
-      ["too_hard", "Too hard"]
+      ["hard", "Hard"]
     ];
-    let html = topbar(week);
+    const feelOn = log.feel || "right";
+    const rideDay = meta.type === "ride" || (log.satChoice || state.satChoice) === "ride";
+    let html = '<div class="ex-main">';
+    html += topbar(week);
     html += "<h2>How did that workout feel?</h2>";
     html += '<div class="feel-grid">';
     feels.forEach(function (f) {
       html +=
         '<button type="button" class="feel-btn' +
-        (log.feel === f[0] ? " is-on" : "") +
+        (feelOn === f[0] ? " is-on" : "") +
         '" data-act="feel" data-val="' +
         f[0] +
         '">' +
@@ -2027,24 +2049,13 @@
         "</button>";
     });
     html += "</div>";
-    html += '<span class="tracker-label">RPE (optional)</span><div class="seg rpe">';
-    for (let i = 1; i <= 10; i++) {
-      html +=
-        '<button type="button" data-act="rpe" data-val="' +
-        i +
-        '" class="' +
-        (Number(log.rpe) === i ? "is-on" : "") +
-        '">' +
-        i +
-        "</button>";
-    }
-    html += "</div>";
-    html +=
-      '<label class="field"><span>Note (optional)</span><textarea data-act="feel-note" placeholder="Anything worth remembering">' +
-      esc(log.feel_note || "") +
-      "</textarea></label>";
-    if (!log.feel) {
-      html += '<p class="hint">Tap how it felt before you leave if you can.</p>';
+    if (rideDay) {
+      html += '<span class="tracker-label">Smoked for work?</span><div class="seg two">';
+      html += '<button type="button" data-act="track" data-field="smoked" data-val="Y" class="' +
+        (log.smoked === "Y" ? "is-on" : "") + '">Yes</button>';
+      html += '<button type="button" data-act="track" data-field="smoked" data-val="N" class="' +
+        (log.smoked === "N" ? "is-on" : "") + '">No</button>';
+      html += "</div>";
     }
     html += '<div class="done-mark">✓</div>';
     html += "<h2>Session logged.</h2>";
@@ -2057,28 +2068,10 @@
         html += '<div class="recap-row"><b>' + esc(r.name) + "</b><span>" + esc(r.detail) + "</span></div>";
       });
     }
-    html += "</div>";
-    html += "<h3>Optional tracker</h3>";
-    html += '<p class="hint">One line. Skip if you want to walk out.</p>';
-    html += '<span class="tracker-label">Sleep 1–5</span><div class="seg">';
-    for (let i = 1; i <= 5; i++) {
-      html += '<button type="button" data-act="track" data-field="sleep" data-val="' + i + '" class="' +
-        (log.sleep === i ? "is-on" : "") + '">' + i + "</button>";
-    }
-    html += "</div>";
-    html += '<span class="tracker-label">Work-stress 1–5</span><div class="seg">';
-    for (let i = 1; i <= 5; i++) {
-      html += '<button type="button" data-act="track" data-field="stress" data-val="' + i + '" class="' +
-        (log.stress === i ? "is-on" : "") + '">' + i + "</button>";
-    }
-    html += "</div>";
-    html += '<span class="tracker-label">Smoked for work?</span><div class="seg two">';
-    html += '<button type="button" data-act="track" data-field="smoked" data-val="Y" class="' +
-      (log.smoked === "Y" ? "is-on" : "") + '">Yes</button>';
-    html += '<button type="button" data-act="track" data-field="smoked" data-val="N" class="' +
-      (log.smoked === "N" ? "is-on" : "") + '">No</button>';
-    html += "</div>";
-    html += '<div class="actions"><button type="button" class="btn btn-primary" data-act="back-home">Back home</button></div>';
+    html += "</div></div>";
+    html += '<div class="pin-log"><div class="actions">';
+    html += '<button type="button" class="btn btn-primary" data-act="back-home">Back home</button>';
+    html += "</div></div>";
     $app.innerHTML = html;
   }
 
@@ -2165,18 +2158,18 @@
         if (state.round > 0) {
           state.round -= 1;
           state.exIndex = n - 1;
-          state.currentSet = 0;
+          landOnOpenSet();
         }
       } else if (idx >= n) {
         const rounds = circuitRounds(weekNumber(date), dayLog(date).highStress);
         if (state.round + 1 < rounds) {
           state.round += 1;
           state.exIndex = 0;
-          state.currentSet = 0;
+          landOnOpenSet();
         }
       } else {
         state.exIndex = idx;
-        state.currentSet = 0;
+        landOnOpenSet();
       }
     } else if (idx < 0) {
       if (dayMeta(date).type === "lift") {
@@ -2185,7 +2178,7 @@
       }
     } else if (idx < n) {
       state.exIndex = idx;
-      state.currentSet = 0;
+      landOnOpenSet();
     }
     render();
   }
@@ -2322,7 +2315,7 @@
       applyScroll(pos, true);
       return;
     }
-    const dock = state.view === "home" || state.view === "warmup" || state.view === "exercise" || state.view === "mobility" || state.view === "off" || state.view === "save" || state.view === "why";
+    const dock = state.view === "home" || state.view === "warmup" || state.view === "exercise" || state.view === "mobility" || state.view === "off" || state.view === "save" || state.view === "why" || state.view === "done";
     setDock(dock);
     if (state.view === "home") renderHome();
     else if (state.view === "warmup") renderWarmup();
@@ -2553,8 +2546,8 @@
       doSignOut();
     } else if (act === "wu-continue") {
       state.exIndex = 0;
-      state.currentSet = 0;
       state.view = "exercise";
+      landOnOpenSet();
       render();
     } else if (act === "start-lift") {
       closeWatch();
@@ -2579,7 +2572,7 @@
     } else if (act === "next-ex" || act === "skip-ex") {
       state.logHint = "";
       state.exIndex += 1;
-      state.currentSet = 0;
+      landOnOpenSet();
       render();
     } else if (act === "start-hold") {
       ensureAudio();
@@ -2620,11 +2613,13 @@
       let val = t.getAttribute("data-val");
       if (field !== "smoked") val = Number(val);
       patchDay(state.selectedDate, function (log) { log[field] = val; });
+      if (field === "smoked") refreshLastSession(state.selectedDate);
       scheduleSync(state.selectedDate);
       render();
     } else if (act === "feel") {
       patchDay(state.selectedDate, function (log) { log.feel = t.getAttribute("data-val"); });
       applyFeelAdjustments(state.selectedDate);
+      refreshLastSession(state.selectedDate);
       syncSession(state.selectedDate);
       render();
     } else if (act === "rpe") {
