@@ -1726,11 +1726,7 @@
 
     const lastSet = state.currentSet >= nSets - 1;
     html += '<div class="actions">';
-    html += '<button type="button" class="btn btn-primary" data-act="log-set">Log set' +
-      (ex.rest ? " · start " + ex.rest + "s rest" : "") + "</button>";
-    if (ex.rest) {
-      html += '<button type="button" class="btn btn-ghost" data-act="start-rest" data-sec="' + ex.rest + '">Start rest</button>';
-    }
+    html += '<button type="button" class="btn btn-primary" data-act="log-set">Log set</button>';
     if (!lastSet && !isCircuit) {
       html += '<button type="button" class="btn btn-ghost" data-act="next-set">Next set</button>';
     }
@@ -2280,16 +2276,8 @@
     const loggedIdx = state.currentSet;
     writeSet(state.selectedDate, circuitKey(list[state.exIndex]), loggedIdx, "done", true);
     const last = loggedIdx >= nSets - 1;
-    if (isCircuit) {
-      if (ex.rest) startRest(ex.rest, "Rest", null);
-      return;
-    }
-    if (last) {
-      if (ex.rest) startRest(ex.rest, "Rest · then next exercise", null);
-      else render();
-      return;
-    }
-    startRest(ex.rest || 90, "Rest · set " + (state.currentSet + 2), "next-set");
+    if (!last) advanceCurrentSet();
+    render();
   }
 
   function armIntervalTick() {
@@ -2444,18 +2432,10 @@
       render();
     } else if (act === "log-set") {
       logSetAndRest();
-    } else if (act === "start-rest") {
-      markSetDone();
-      const list = currentExerciseList();
-      const ex = D.exercises[list[state.exIndex]];
-      const nSets = setsFor(ex, weekNumber(state.selectedDate), dayLog(state.selectedDate).highStress, state.selectedDate);
-      const last = state.currentSet >= nSets - 1;
-      startRest(Number(t.getAttribute("data-sec")), "Rest", last ? null : "next-set");
     } else if (act === "next-set") {
       markSetDone();
-      const list = currentExerciseList();
-      const ex = D.exercises[list[state.exIndex]];
-      startRest(ex.rest, "Rest · then set " + (state.currentSet + 2), "next-set");
+      advanceCurrentSet();
+      render();
     } else if (act === "next-ex" || act === "skip-ex") {
       if (act === "next-ex") markSetDone();
       state.exIndex += 1;
