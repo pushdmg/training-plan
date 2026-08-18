@@ -280,6 +280,44 @@
     const ex = D.exercises[liftBaseId(exId)];
     return !!(ex && ex.log === "done");
   }
+  function usesMinutes(ex) {
+    if (!ex) return false;
+    if (ex.timeUnit === "min") return true;
+    const hold = Number(ex.hold);
+    return isFinite(hold) && hold >= 60;
+  }
+  function timeUnitOf(ex) {
+    return usesMinutes(ex) ? "min" : "sec";
+  }
+  function displayTime(ex, stored) {
+    const raw = String(stored == null ? "" : stored).trim();
+    if (!usesMinutes(ex)) {
+      return raw || (ex && ex.hold != null ? String(ex.hold) : "30");
+    }
+    const n = parseFloat(raw);
+    if (isFinite(n) && n >= 60) return String(Math.round(n / 60));
+    if (raw) return raw;
+    const hold = Number(ex && ex.hold);
+    return String(isFinite(hold) && hold > 0 ? Math.round(hold / 60) : 6);
+  }
+  function formatTimeLogged(ex, stored) {
+    if (stored == null || String(stored).trim() === "") return "";
+    if (!usesMinutes(ex)) return String(stored) + "s";
+    const n = parseFloat(stored);
+    const mins = isFinite(n) && n >= 60 ? Math.round(n / 60) : stored;
+    return mins + " min";
+  }
+  function holdSecondsFromSet(ex, s) {
+    const n = numOrNull(s && s.time);
+    if (n == null) return null;
+    if (usesMinutes(ex) && n < 60) return n * 60;
+    return n;
+  }
+  function timeSecondsForTimer(ex, stored) {
+    const n = parseFloat(displayTime(ex, stored));
+    if (!isFinite(n) || n <= 0) return usesMinutes(ex) ? 360 : 30;
+    return usesMinutes(ex) ? Math.round(n * 60) : Math.round(n);
+  }
   function isLoggedSet(s, exId) {
     if (!s || s.logged !== true) return false;
     if (setHasValue(s)) return true;
@@ -365,7 +403,7 @@
     return {
       weight: weight,
       reps: nonzeroField(s.reps) || nonzeroField(last.reps) || defaultReps(ex),
-      time: String(s.time || "").trim() || last.time || (ex && ex.hold ? String(ex.hold) : ""),
+      time: displayTime(ex, String(s.time || "").trim() || last.time || ""),
       note: s.note == null ? "" : String(s.note)
     };
   }
@@ -781,7 +819,7 @@
           set_index: i + 1,
           weight: numOrNull(s.weight),
           reps: numOrNull(s.reps),
-          hold_seconds: numOrNull(s.time),
+          hold_seconds: holdSecondsFromSet(ex, s),
           note: s.note || null,
           done: !!s.done
         });
@@ -1140,10 +1178,15 @@
       (exs[id] || []).forEach(function (s) {
         if (!s) return;
         if (!isLoggedSet(s) && !setHasValue(s) && s.done !== true) return;
-        sets.push({
+        const row = {
           weight: s.weight == null ? "" : s.weight,
           reps: s.reps == null ? "" : s.reps
-        });
+        };
+        if (String(s.time || "").trim()) {
+          row.time = usesMinutes(ex) ? displayTime(ex, s.time) : s.time;
+          row.timeUnit = timeUnitOf(ex);
+        }
+        sets.push(row);
       });
       if (!sets.length) return;
       if (!byName[ex.name]) {
@@ -1214,7 +1257,18 @@
     state.interval = ret.interval || null;
     state.rideStep = ret.rideStep || 0;
   }
+  function defaultFeelIfNeeded() {
+    if (!isAuthed()) return;
+    if (state.view !== "done") return;
+    const log = dayLog(state.selectedDate);
+    if (log.feel) return;
+    patchDay(state.selectedDate, function (l) { l.feel = "right"; });
+    applyFeelAdjustments(state.selectedDate);
+    writeLastSession(state.selectedDate, "done");
+    syncSession(state.selectedDate);
+  }
   function goHomeQuiet() {
+    defaultFeelIfNeeded();
     state.view = "home";
     state.leaveKind = null;
     state.leaveReturn = null;
@@ -1824,13 +1878,12 @@
 
     let compact = "";
     for (let i = 0; i < nSets; i++) {
-      if (i === state.currentSet) continue;
-      const hist = sets[i] || {};
+      const hist = isolateSet(sets[i]);
       if (!isLoggedSet(hist, key)) continue;
       const bits = [];
       if (hist.weight) bits.push(hist.weight);
       if (hist.reps) bits.push(hist.reps + (ex.perSide ? "/side" : "r"));
-      if (hist.time) bits.push(hist.time + "s");
+      if (hist.time) bits.push(formatTimeLogged(ex, hist.time));
       if (hist.note) bits.push(hist.note);
       compact +=
         '<div class="logged-line" data-act="focus-set" data-set="' + i + '">Set ' +
@@ -1846,37 +1899,41 @@
     sanitizeUpcomingSet(key, i);
     const s = isolateSet(((dayLog(date).exercises || {})[key] || sets)[i]);
     const shown = shownSetValues(ex, key, date, i, s);
+    const currentLogged = isLoggedSet(s, key);
     html += '<div class="pin-log">';
-    html += '<div class="set is-current" data-act="focus-set" data-set="' + i + '">';
-    html += '<div class="set-head"><span>Set ' + (i + 1) + " · now</span></div>";
-    if (ex.log !== "done") {
-      html += '<div class="set-grid">';
-      if (ex.log === "weight-reps" || ex.log === "weight-time") {
-        html += '<label class="field"><span>' + esc(ex.weightLabel || "Weight (lb)") + "</span>" +
-          stepperHtml(key, i, "weight", shown.weight, 5, shown.weight || helpSeedFor(key) || "") + "</label>";
-      }
-      if (ex.log === "weight-reps") {
-        html += '<label class="field field-reps"><span>Reps' + (ex.perSide ? " / side" : "") + "</span>" +
-          stepperHtml(key, i, "reps", shown.reps, 1, shown.reps || defaultReps(ex)) + "</label>";
-      }
-      if (ex.log === "time" || ex.log === "weight-time") {
-        html += '<label class="field"><span>Seconds</span>' +
-          stepperHtml(key, i, "time", shown.time, 5, shown.time || String(ex.hold || 30)) + "</label>";
+    if (!currentLogged) {
+      html += '<div class="set is-current" data-act="focus-set" data-set="' + i + '">';
+      html += '<div class="set-head"><span>Set ' + (i + 1) + " · now</span></div>";
+      if (ex.log !== "done") {
+        html += '<div class="set-grid">';
+        if (ex.log === "weight-reps" || ex.log === "weight-time") {
+          html += '<label class="field"><span>' + esc(ex.weightLabel || "Weight (lb)") + "</span>" +
+            stepperHtml(key, i, "weight", shown.weight, 5, shown.weight || helpSeedFor(key) || "") + "</label>";
+        }
+        if (ex.log === "weight-reps") {
+          html += '<label class="field field-reps"><span>Reps' + (ex.perSide ? " / side" : "") + "</span>" +
+            stepperHtml(key, i, "reps", shown.reps, 1, shown.reps || defaultReps(ex)) + "</label>";
+        }
+        if (ex.log === "time" || ex.log === "weight-time") {
+          const minWork = usesMinutes(ex);
+          html += '<label class="field"><span>' + (minWork ? "Minutes" : "Seconds") + "</span>" +
+            stepperHtml(key, i, "time", shown.time, minWork ? 1 : 5, shown.time || displayTime(ex, "")) + "</label>";
+        }
+        html += "</div>";
+        if (ex.note) {
+          html +=
+            '<label class="field" style="margin-top:8px"><span>What you used</span><input type="text" data-act="log" data-ex="' +
+            key + '" data-set="' + i + '" data-field="note" value="' + esc(shown.note || "") +
+            '" placeholder="machine / lunges / skip"></label>';
+        }
       }
       html += "</div>";
-      if (ex.note) {
-        html +=
-          '<label class="field" style="margin-top:8px"><span>What you used</span><input type="text" data-act="log" data-ex="' +
-          key + '" data-set="' + i + '" data-field="note" value="' + esc(shown.note || "") +
-          '" placeholder="machine / lunges / skip"></label>';
-      }
     }
-    html += "</div>";
     if (state.logHint) html += '<p class="hint log-hint">' + esc(state.logHint) + "</p>";
 
     html += '<div class="actions">' + liftDockPrimaryHtml({
       lastSet: state.currentSet >= nSets - 1,
-      currentLogged: isLoggedSet(s, key),
+      currentLogged: currentLogged,
       nextLabel: liftDockNextLabel(isCircuit, list.length, week, log)
     }) + "</div></div>";
     $app.innerHTML = html;
@@ -2010,7 +2067,7 @@
           const parts = [];
           if (s.weight) parts.push(s.weight);
           if (s.reps) parts.push(s.reps + "r");
-          if (s.time) parts.push(s.time + "s");
+          if (s.time) parts.push(formatTimeLogged(ex, s.time));
           if (s.note) parts.push(s.note);
           if (s.done && !s.weight && !s.reps && !s.time) parts.push("done");
           return parts.length ? "S" + (i + 1) + " " + parts.join(" ") : null;
@@ -2032,7 +2089,8 @@
       ["right", "Right"],
       ["hard", "Hard"]
     ];
-    const feelOn = log.feel || "right";
+    const feelOn = log.feel || "";
+    const saved = !!log.feel;
     const rideDay = meta.type === "ride" || (log.satChoice || state.satChoice) === "ride";
     let html = '<div class="ex-main">';
     html += topbar(week);
@@ -2057,8 +2115,10 @@
         (log.smoked === "N" ? "is-on" : "") + '">No</button>';
       html += "</div>";
     }
-    html += '<div class="done-mark">✓</div>';
-    html += "<h2>Session logged.</h2>";
+    if (saved) {
+      html += '<div class="done-mark">✓</div>';
+      html += "<h2>Session logged.</h2>";
+    }
     html += '<p class="lede">' + esc(meta.title) + " · " + esc(prettyDate(date)) + "</p>";
     html += '<div class="card">';
     if (!rows.length) {
@@ -2069,9 +2129,11 @@
       });
     }
     html += "</div></div>";
-    html += '<div class="pin-log"><div class="actions">';
-    html += '<button type="button" class="btn btn-primary" data-act="back-home">Back home</button>';
-    html += "</div></div>";
+    if (saved) {
+      html += '<div class="pin-log"><div class="actions">';
+      html += '<button type="button" class="btn btn-primary" data-act="back-home">Home</button>';
+      html += "</div></div>";
+    }
     $app.innerHTML = html;
   }
 
@@ -2116,13 +2178,14 @@
       if (!log.started_at) log.started_at = now;
       log.completed_at = now;
       if (state.satChoice) log.satChoice = state.satChoice;
-      if (!log.feel) log.feel = "right";
     });
-    writeLastSession(state.selectedDate, "done");
     state.view = "done";
     persistUI();
     syncSession(state.selectedDate);
-    if (dayLog(state.selectedDate).feel) applyFeelAdjustments(state.selectedDate);
+    if (dayLog(state.selectedDate).feel) {
+      writeLastSession(state.selectedDate, "done");
+      applyFeelAdjustments(state.selectedDate);
+    }
     render();
   }
 
@@ -2613,13 +2676,13 @@
       let val = t.getAttribute("data-val");
       if (field !== "smoked") val = Number(val);
       patchDay(state.selectedDate, function (log) { log[field] = val; });
-      if (field === "smoked") refreshLastSession(state.selectedDate);
+      if (field === "smoked" && dayLog(state.selectedDate).feel) refreshLastSession(state.selectedDate);
       scheduleSync(state.selectedDate);
       render();
     } else if (act === "feel") {
       patchDay(state.selectedDate, function (log) { log.feel = t.getAttribute("data-val"); });
       applyFeelAdjustments(state.selectedDate);
-      refreshLastSession(state.selectedDate);
+      writeLastSession(state.selectedDate, "done");
       syncSession(state.selectedDate);
       render();
     } else if (act === "rpe") {
@@ -2675,13 +2738,52 @@
   });
 
   document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "hidden") defaultFeelIfNeeded();
     if (document.visibilityState === "visible") {
       if (isAuthed()) render();
     }
   });
+  window.addEventListener("pagehide", function () { defaultFeelIfNeeded(); });
+
+  function hideSwUpdateBar() {
+    const bar = document.getElementById("sw-update");
+    if (bar && bar.parentNode) bar.parentNode.removeChild(bar);
+  }
+  function showSwUpdateBar(reg) {
+    if (document.getElementById("sw-update")) return;
+    const bar = document.createElement("button");
+    bar.id = "sw-update";
+    bar.type = "button";
+    bar.textContent = "New version — tap to update";
+    bar.addEventListener("click", function () {
+      hideSwUpdateBar();
+      if (reg && reg.waiting) reg.waiting.postMessage("SKIP_WAITING");
+      location.reload();
+    });
+    document.body.appendChild(bar);
+  }
+  function maybeShowSwUpdate(reg) {
+    if (reg && reg.waiting && navigator.serviceWorker.controller) {
+      showSwUpdateBar(reg);
+      return;
+    }
+    hideSwUpdateBar();
+    if (reg && reg.waiting && !navigator.serviceWorker.controller) {
+      reg.waiting.postMessage("SKIP_WAITING");
+    }
+  }
 
   if ("serviceWorker" in navigator && location.protocol.indexOf("http") === 0) {
-    navigator.serviceWorker.register("sw.js").catch(function () {});
+    navigator.serviceWorker.register("sw.js").then(function (reg) {
+      maybeShowSwUpdate(reg);
+      reg.addEventListener("updatefound", function () {
+        const incoming = reg.installing;
+        if (!incoming) return;
+        incoming.addEventListener("statechange", function () {
+          if (incoming.state === "installed") maybeShowSwUpdate(reg);
+        });
+      });
+    }).catch(function () {});
   }
 
   try {

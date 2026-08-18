@@ -1,4 +1,4 @@
-const CACHE = "botfit-v26";
+const CACHE = "botfit-v27";
 const ASSETS = [
   "./",
   "./index.html",
@@ -13,9 +13,7 @@ const ASSETS = [
 ];
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open(CACHE).then((cache) => cache.addAll(ASSETS)).then(() => self.skipWaiting())
-  );
+  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(ASSETS)));
 });
 
 self.addEventListener("activate", (event) => {
@@ -24,6 +22,10 @@ self.addEventListener("activate", (event) => {
       Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key)))
     ).then(() => self.clients.claim())
   );
+});
+
+self.addEventListener("message", (event) => {
+  if (event.data === "SKIP_WAITING") self.skipWaiting();
 });
 
 self.addEventListener("fetch", (event) => {
