@@ -256,18 +256,13 @@
     if (setHasValue(s)) return true;
     return !!(exId && isBareDoneLift(exId) && s.done === true);
   }
-  function isHelpLift(ex) {
-    return !!(ex && /help/i.test(String(ex.weightLabel || "")));
-  }
-  function helpSeed(exId) {
+  function helpSeedFor(exId) {
     const id = liftBaseId(exId);
+    if (id !== "assisted-pullup" && id !== "assisted-dip") return "";
     const ex = D.exercises[id];
-    if (ex && ex.seedWeight != null && String(ex.seedWeight).trim() !== "" && String(ex.seedWeight) !== "0") {
-      return String(ex.seedWeight);
-    }
-    if (id === "assisted-pullup") return "100";
-    if (id === "assisted-dip") return "110";
-    return "";
+    const fromData = ex && ex.seedWeight != null ? String(ex.seedWeight).trim() : "";
+    if (fromData && fromData !== "0") return fromData;
+    return id === "assisted-dip" ? "110" : "100";
   }
   function defaultReps(ex) {
     return String((ex && ex.reps) || "").split(/[^\d]/)[0] || "8";
@@ -318,11 +313,15 @@
   function shownSetValues(ex, key, date, idx, row) {
     const s = isolateSet(row);
     const last = lastSetValuesBefore(key, date, idx);
-    const help = isHelpLift(ex) ? helpSeed(key) : "";
+    const help = helpSeedFor(key);
     let weight = String(s.weight || "").trim();
-    if (!weight || (help && weight === "0")) {
-      const prev = last.weight && !(help && last.weight === "0") ? last.weight : "";
-      weight = prev || help;
+    if (help) {
+      if (!weight || weight === "0") {
+        const prev = last.weight && last.weight !== "0" ? last.weight : "";
+        weight = prev || help;
+      }
+    } else if (!weight) {
+      weight = last.weight || "";
     }
     return {
       weight: weight,
@@ -1804,7 +1803,7 @@
       html += '<div class="set-grid">';
       if (ex.log === "weight-reps" || ex.log === "weight-time") {
         html += '<label class="field"><span>' + esc(ex.weightLabel || "Weight (lb)") + "</span>" +
-          stepperHtml(key, i, "weight", shown.weight, 5, shown.weight || "0") + "</label>";
+          stepperHtml(key, i, "weight", shown.weight, 5, shown.weight || helpSeedFor(key) || "") + "</label>";
       }
       if (ex.log === "weight-reps") {
         html += '<label class="field field-reps"><span>Reps' + (ex.perSide ? " / side" : "") + "</span>" +
