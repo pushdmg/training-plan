@@ -1037,40 +1037,21 @@
     return m + ":" + String(s).padStart(2, "0");
   }
 
-  function startRest(seconds, label, after) {
-    if (!seconds) {
-      if (after === "next-set") advanceCurrentSet();
-      render();
-      return;
-    }
-    state.rest = { ends: Date.now() + seconds * 1000, total: seconds, label: label || "Rest", after: after || null };
-    tickRest();
-    if (restTimer) clearInterval(restTimer);
-    restTimer = setInterval(tickRest, 250);
-    renderOverlay();
-  }
-  function tickRest() {
-    if (!state.rest) return;
-    const left = (state.rest.ends - Date.now()) / 1000;
-    if (left <= 0) {
-      const after = state.rest.after;
-      clearInterval(restTimer);
-      restTimer = null;
-      state.rest = null;
-      if (after === "next-set") advanceCurrentSet();
-      alertDone();
-      renderOverlay();
-      render();
-      return;
-    }
-    renderOverlay();
-  }
-  function skipRest() {
-    const after = state.rest && state.rest.after;
+  function clearRest() {
+    state.rest = null;
     if (restTimer) clearInterval(restTimer);
     restTimer = null;
-    state.rest = null;
+  }
+  function startRest(seconds, label, after) {
+    clearRest();
     if (after === "next-set") advanceCurrentSet();
+    render();
+  }
+  function tickRest() {
+    clearRest();
+  }
+  function skipRest() {
+    clearRest();
     renderOverlay();
     render();
   }
@@ -1830,19 +1811,25 @@
     html += "</div>";
     if (state.logHint) html += '<p class="hint log-hint">' + esc(state.logHint) + "</p>";
 
-    const lastSet = state.currentSet >= nSets - 1;
-    const currentLogged = isLoggedSet(s, key);
-    const nextLabel = isCircuit && state.exIndex === list.length - 1
-      ? (state.round + 1 >= circuitRounds(week, log.highStress) ? "Finish circuit" : "Next round")
-      : state.exIndex === list.length - 1 ? "Finish workout" : "Next exercise";
-    html += '<div class="actions">';
-    if (lastSet && currentLogged) {
-      html += '<button type="button" class="btn btn-primary" data-act="next-ex">' + nextLabel + "</button>";
-    } else {
-      html += '<button type="button" class="btn btn-primary" data-act="log-set">Log set</button>';
-    }
-    html += "</div></div>";
+    html += '<div class="actions">' + liftDockPrimaryHtml({
+      lastSet: state.currentSet >= nSets - 1,
+      currentLogged: isLoggedSet(s, key),
+      nextLabel: liftDockNextLabel(isCircuit, list.length, week, log)
+    }) + "</div></div>";
     $app.innerHTML = html;
+  }
+
+  function liftDockNextLabel(isCircuit, listLen, week, log) {
+    if (state.exIndex !== listLen - 1) return "Next exercise";
+    if (isCircuit && state.round + 1 < circuitRounds(week, log.highStress)) return "Next round";
+    return "Finish workout";
+  }
+
+  function liftDockPrimaryHtml(opts) {
+    if (opts.lastSet && opts.currentLogged) {
+      return '<button type="button" class="btn btn-primary" data-act="next-ex">' + opts.nextLabel + "</button>";
+    }
+    return '<button type="button" class="btn btn-primary" data-act="log-set">Log set</button>';
   }
 
   function circuitKey(exId) {
@@ -2174,20 +2161,9 @@
         "</div>";
       return;
     }
-    if (!state.rest) {
-      $overlay.hidden = true;
-      $overlay.innerHTML = "";
-      return;
-    }
-    const left = Math.max(0, (state.rest.ends - Date.now()) / 1000);
-    const go = left <= 0;
-    $overlay.hidden = false;
-    $overlay.innerHTML =
-      '<div class="sheet"><div class="clock">' + (go ? "GO" : fmtClock(left)) + "</div><h2>" +
-      esc(state.rest.label) + '</h2><p class="sub">' +
-      (go ? "Next set." : "Stay on this screen. It will buzz and beep if the browser allows.") +
-      '</p><div class="actions"><button type="button" class="btn btn-primary" data-act="skip-rest">' +
-      (go ? "Continue" : "Skip rest") + "</button></div></div>";
+    clearRest();
+    $overlay.hidden = true;
+    $overlay.innerHTML = "";
   }
 
   function persistUI() {
@@ -2570,8 +2546,6 @@
       render();
     } else if (act === "finish") {
       finishSession();
-    } else if (act === "skip-rest") {
-      skipRest();
     } else if (act === "step") {
       const field = t.getAttribute("data-field");
       const idx = Number(t.getAttribute("data-set"));
@@ -2647,10 +2621,6 @@
 
   $overlay.addEventListener("click", function (e) {
     const t = e.target.closest("[data-act]");
-    if (t && t.getAttribute("data-act") === "skip-rest") {
-      skipRest();
-      return;
-    }
     if ((t && t.getAttribute("data-act") === "close-watch") || (state.watchUrl && e.target === $overlay)) {
       closeWatch();
       render();
@@ -2659,7 +2629,6 @@
 
   document.addEventListener("visibilitychange", function () {
     if (document.visibilityState === "visible") {
-      if (state.rest) tickRest();
       if (isAuthed()) render();
     }
   });
