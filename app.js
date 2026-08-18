@@ -38,7 +38,8 @@
     showCal: false,
     leaveKind: null,
     leaveReturn: null,
-    watchUrl: null
+    watchUrl: null,
+    logHint: ""
   };
 
   let restTimer = null;
@@ -148,6 +149,20 @@
   function allowedEmail() {
     return String((sbCfg() && sbCfg().allowedEmail) || "jon@pushdmg.com").toLowerCase();
   }
+  function allowedEmails() {
+    const cfg = sbCfg() || {};
+    const list = [];
+    const extra = cfg.allowedEmails;
+    if (Array.isArray(extra)) {
+      extra.forEach(function (item) {
+        const email = cleanEmail(item);
+        if (email && list.indexOf(email) === -1) list.push(email);
+      });
+    }
+    const one = allowedEmail();
+    if (one && list.indexOf(one) === -1) list.unshift(one);
+    return list;
+  }
   function cleanEmail(email) {
     return String(email || "")
       .replace(/[\u200B-\u200D\u2060\uFEFF\u00A0]/g, "")
@@ -158,7 +173,7 @@
     return cleanEmail(email) || allowedEmail();
   }
   function emailAllowed(email) {
-    return cleanEmail(email) === allowedEmail();
+    return allowedEmails().indexOf(cleanEmail(email)) !== -1;
   }
   function sessionEmailOk(email) {
     const cleaned = cleanEmail(email);
@@ -246,8 +261,141 @@
     if (!s) return false;
     return !!(String(s.weight || "").trim() || String(s.reps || "").trim() || String(s.time || "").trim());
   }
-  function isLoggedSet(s) {
-    return !!(s && s.logged === true && setHasValue(s));
+  function isBareDoneLift(exId) {
+    const ex = D.exercises[liftBaseId(exId)];
+    return !!(ex && ex.log === "done");
+  }
+  function isLoggedSet(s, exId) {
+    if (!s || s.logged !== true) return false;
+    if (setHasValue(s)) return true;
+    return !!(exId && isBareDoneLift(exId) && s.done === true);
+  }
+  function helpSeedFor(exId) {
+    const id = liftBaseId(exId);
+    if (id !== "assisted-pullup" && id !== "assisted-dip") return "";
+    const ex = D.exercises[id];
+    let seed = id === "assisted-dip" ? 110 : 100;
+    if (ex && ex.seedWeight != null) {
+      const n = parseFloat(ex.seedWeight);
+      if (isFinite(n) && n > 0) seed = n;
+    }
+    const top = ex && ex.stackTop != null ? parseFloat(ex.stackTop) : NaN;
+    if (isFinite(top) && top > 0 && seed > top) seed = top;
+    if (!(seed > 0)) seed = id === "assisted-dip" ? 110 : 100;
+    return String(seed);
+  }
+  function defaultReps(ex) {
+    return String((ex && ex.reps) || "").split(/[^\d]/)[0] || "8";
+  }
+  function lastSetValuesBefore(exId, date, setIdx) {
+    const want = liftBaseId(exId);
+    const out = { weight: "", reps: "", time: "" };
+    function consider(row) {
+      if (!row) return false;
+      const w = String(row.weight || "").trim();
+      const r = String(row.reps || "").trim();
+      const t = String(row.time || "").trim();
+      if (!w && !r && !t && !(row.logged === true && row.done === true)) return false;
+      if (w) out.weight = w;
+      if (r) out.reps = r;
+      if (t) out.time = t;
+      return !!(w || r || t);
+    }
+    const exs = (dayLog(date).exercises || {});
+    const ids = Object.keys(exs);
+    for (let k = 0; k < ids.length; k++) {
+      if (!sameLift(ids[k], want)) continue;
+      const sets = exs[ids[k]] || [];
+      const last = sameLift(ids[k], exId) && ids[k] === exId ? setIdx : sets.length;
+      for (let i = last - 1; i >= 0; i--) {
+        if (consider(sets[i])) return out;
+      }
+    }
+    const all = loadAll();
+    const keys = Object.keys(all).sort().reverse();
+    const except = iso(date);
+    for (let i = 0; i < keys.length; i++) {
+      if (except && keys[i] === except) continue;
+      const session = all[keys[i]] && all[keys[i]].exercises;
+      if (!session || typeof session !== "object") continue;
+      const sids = Object.keys(session);
+      for (let k = 0; k < sids.length; k++) {
+        if (!sameLift(sids[k], want)) continue;
+        const sets = session[sids[k]];
+        if (!Array.isArray(sets)) continue;
+        for (let s = sets.length - 1; s >= 0; s--) {
+          if (consider(sets[s])) return out;
+        }
+      }
+    }
+    return out;
+  }
+  function shownSetValues(ex, key, date, idx, row) {
+    const s = isolateSet(row);
+    const last = lastSetValuesBefore(key, date, idx);
+    const help = helpSeedFor(key);
+    let weight = String(s.weight || "").trim();
+    if (help) {
+      if (!weight || weight === "0") {
+        const prev = last.weight && last.weight !== "0" ? last.weight : "";
+        weight = prev || help;
+      }
+    } else if (!weight) {
+      weight = last.weight || "";
+    }
+    return {
+      weight: weight,
+      reps: String(s.reps || "").trim() || last.reps || defaultReps(ex),
+      time: String(s.time || "").trim() || last.time || (ex && ex.hold ? String(ex.hold) : ""),
+      note: s.note == null ? "" : String(s.note)
+    };
+  }
+  function readStepperField(key, idx, field) {
+    const el = $app && $app.querySelector(
+      'input[data-act="log"][data-ex="' + key + '"][data-set="' + String(idx) + '"][data-field="' + field + '"]'
+    );
+    return el ? String(el.value) : null;
+  }
+  function pickScreenField(key, idx, field, fallback) {
+    const raw = readStepperField(key, idx, field);
+    if (raw != null) return String(raw).trim();
+    return fallback == null ? "" : String(fallback);
+  }
+  function commitScreenSet(date, key, idx, ex) {
+    const row = isolateSet(((dayLog(date).exercises || {})[key] || [])[idx]);
+    const shown = shownSetValues(ex, key, date, idx, row);
+    if (ex.log === "done") {
+      writeSet(date, key, idx, "done", true);
+      const after = isolateSet(((dayLog(date).exercises || {})[key] || [])[idx]);
+      return after.done === true || after.logged === true;
+    }
+    const vals = {
+      weight: pickScreenField(key, idx, "weight", shown.weight),
+      reps: pickScreenField(key, idx, "reps", shown.reps),
+      time: pickScreenField(key, idx, "time", shown.time),
+      note: pickScreenField(key, idx, "note", shown.note)
+    };
+    if (ex.log === "weight-reps" || ex.log === "weight-time") {
+      writeSet(date, key, idx, "weight", vals.weight);
+    }
+    if (ex.log === "weight-reps") {
+      writeSet(date, key, idx, "reps", vals.reps);
+    }
+    if (ex.log === "time" || ex.log === "weight-time") {
+      writeSet(date, key, idx, "time", vals.time);
+    }
+    if (vals.note) writeSet(date, key, idx, "note", vals.note);
+    const saved = isolateSet(((dayLog(date).exercises || {})[key] || [])[idx]);
+    if (!setHasValue(saved)) return false;
+    writeSet(date, key, idx, "done", true);
+    return isLoggedSet(isolateSet(((dayLog(date).exercises || {})[key] || [])[idx]), key);
+  }
+  function prefillSetFrom(date, key, fromIdx, toIdx) {
+    const src = isolateSet(((dayLog(date).exercises || {})[key] || [])[fromIdx]);
+    if (!setHasValue(src)) return;
+    if (String(src.weight || "").trim()) writeSet(date, key, toIdx, "weight", String(src.weight));
+    if (String(src.reps || "").trim()) writeSet(date, key, toIdx, "reps", String(src.reps));
+    if (String(src.time || "").trim()) writeSet(date, key, toIdx, "time", String(src.time));
   }
   function isLiftStarted(log, key) {
     if (!log || !key) return false;
@@ -338,6 +486,7 @@
     if (!isAuthed()) return;
     const i = Number(idx);
     if (!isFinite(i) || i < 0) return;
+    const bareOk = isBareDoneLift(exId);
     patchDay(date, function (log) {
       if (!Array.isArray(log.exercises[exId])) log.exercises[exId] = [];
       while (log.exercises[exId].length <= i) {
@@ -346,13 +495,13 @@
       const row = isolateSet(log.exercises[exId][i]);
       if (field === "done") {
         row.done = value === true || value === "true";
-        row.logged = row.done && setHasValue(row);
+        row.logged = row.done && (setHasValue(row) || bareOk);
         if (!row.logged) row.done = false;
       } else if (field === "logged") {
-        row.logged = (value === true || value === "true") && setHasValue(row);
+        row.logged = (value === true || value === "true") && (setHasValue(row) || bareOk);
         if (!row.logged) row.done = false;
       } else row[field] = value;
-      if (row.logged && !setHasValue(row)) {
+      if (row.logged && !setHasValue(row) && !bareOk) {
         row.logged = false;
         row.done = false;
       }
@@ -371,7 +520,7 @@
       if (!Array.isArray(log.exercises[exId])) log.exercises[exId] = [];
       while (log.exercises[exId].length <= i) log.exercises[exId].push(blankSet());
       const row = isolateSet(log.exercises[exId][i]);
-      if (!isLoggedSet(row)) {
+      if (!isLoggedSet(row, exId)) {
         row.done = false;
         row.logged = false;
       }
@@ -902,40 +1051,21 @@
     return m + ":" + String(s).padStart(2, "0");
   }
 
-  function startRest(seconds, label, after) {
-    if (!seconds) {
-      if (after === "next-set") advanceCurrentSet();
-      render();
-      return;
-    }
-    state.rest = { ends: Date.now() + seconds * 1000, total: seconds, label: label || "Rest", after: after || null };
-    tickRest();
-    if (restTimer) clearInterval(restTimer);
-    restTimer = setInterval(tickRest, 250);
-    renderOverlay();
-  }
-  function tickRest() {
-    if (!state.rest) return;
-    const left = (state.rest.ends - Date.now()) / 1000;
-    if (left <= 0) {
-      const after = state.rest.after;
-      clearInterval(restTimer);
-      restTimer = null;
-      state.rest = null;
-      if (after === "next-set") advanceCurrentSet();
-      alertDone();
-      renderOverlay();
-      render();
-      return;
-    }
-    renderOverlay();
-  }
-  function skipRest() {
-    const after = state.rest && state.rest.after;
+  function clearRest() {
+    state.rest = null;
     if (restTimer) clearInterval(restTimer);
     restTimer = null;
-    state.rest = null;
+  }
+  function startRest(seconds, label, after) {
+    clearRest();
     if (after === "next-set") advanceCurrentSet();
+    render();
+  }
+  function tickRest() {
+    clearRest();
+  }
+  function skipRest() {
+    clearRest();
     renderOverlay();
     render();
   }
@@ -1598,7 +1728,6 @@
     const nSets = isCircuit ? 1 : setsFor(ex, week, log.highStress, date);
     const sets = ensureSets(date, circuitKey(exId), nSets);
     if (state.currentSet >= nSets) state.currentSet = nSets - 1;
-    const last = lastWeight(isCircuit ? circuitKey(exId) : exId, iso(date));
     const key = circuitKey(exId);
 
     let html = '<div class="ex-main">';
@@ -1626,119 +1755,95 @@
     }
 
     html += "<h2>" + esc(ex.name) + "</h2>";
-    html += '<div class="where"><span class="pin">USE</span><div>' + esc(ex.where) + "</div></div>";
-    html += "<h3>Setup</h3><div class=\"card step-copy\"><p>" + esc(ex.setup) + "</p></div>";
-    html += "<h3>Form cues</h3><ul class=\"cues\">";
-    (ex.teachCues || []).forEach(function (c) { html += "<li>" + esc(c) + "</li>"; });
-    html += "</ul>";
     var started = isLiftStarted(log, key);
-    if (!started && ex.watchUrl) {
-      html += '<button type="button" class="btn btn-ghost watch-lift" data-act="watch-lift">Watch</button>';
-    }
-    if (!isLiftStarted(log, key)) {
+    var cueList = (ex.teachCues && ex.teachCues.length) ? ex.teachCues : (ex.cues || []).slice(0, 3);
+    if (!started) {
+      html += '<div class="where"><span class="pin">USE</span><div>' + esc(ex.where) + "</div></div>";
+      html += "<h3>Setup</h3><div class=\"card step-copy\"><p>" + esc(ex.setup) + "</p></div>";
+      html += "<h3>Form cues</h3><ul class=\"cues\">";
+      cueList.forEach(function (c) { html += "<li>" + esc(c) + "</li>"; });
+      html += "</ul>";
+      if (ex.watchUrl) {
+        html += '<button type="button" class="btn btn-ghost watch-lift" data-act="watch-lift">Watch</button>';
+      }
       html += "</div>";
       html +=
         '<div class="pin-log"><div class="actions"><button type="button" class="btn btn-primary" data-act="start-lift">Start</button></div></div>';
       $app.innerHTML = html;
       return;
     }
-    if (ex.safety) html += '<div class="note">' + esc(ex.safety) + "</div>";
-    if (week <= 4 && !ex.optional && ex.log !== "done") {
-      html += '<div class="note">Leave 2–3 reps in the tank. No failure weeks 1–4.</div>';
-    }
-    html += '<div class="scheme">';
-    html += '<span class="chip chip-on">' + (isCircuit ? esc(ex.reps) : nSets + " × " + esc(ex.reps)) + "</span>";
-    if (ex.rest) html += '<span class="chip">' + ex.rest + "s rest</span>";
-    if (ex.perSide) html += '<span class="chip">Per side</span>';
-    if (ex.optional) html += '<span class="chip">Skip-able</span>';
-    html += "</div>";
-    if (last) html += '<p class="hint">Last logged weight: ' + esc(last) + "</p>";
 
     let compact = "";
     for (let i = 0; i < nSets; i++) {
       if (i === state.currentSet) continue;
-      const s = sets[i] || {};
-      if (!isLoggedSet(s)) continue;
+      const hist = sets[i] || {};
+      if (!isLoggedSet(hist, key)) continue;
       const bits = [];
-      if (s.weight) bits.push(s.weight);
-      if (s.reps) bits.push(s.reps + (ex.perSide ? "/side" : "r"));
-      if (s.time) bits.push(s.time + "s");
-      if (s.note) bits.push(s.note);
-      compact += '<div class="set" data-act="focus-set" data-set="' + i + '">';
-      compact += '<div class="set-head"><span>Set ' + (i + 1) + "</span><span>logged</span></div>";
-      if (bits.length) compact += '<p class="hint">' + esc(bits.join(" · ")) + "</p>";
-      compact += "</div>";
+      if (hist.weight) bits.push(hist.weight);
+      if (hist.reps) bits.push(hist.reps + (ex.perSide ? "/side" : "r"));
+      if (hist.time) bits.push(hist.time + "s");
+      if (hist.note) bits.push(hist.note);
+      compact +=
+        '<div class="logged-line" data-act="focus-set" data-set="' + i + '">Set ' +
+        (i + 1) + (bits.length ? " · " + esc(bits.join(" · ")) : "") + " · LOGGED</div>";
     }
-    if (compact) {
-      html += "<h3>Logged</h3>" + compact;
-    }
+    if (compact) html += '<div class="logged-hist">' + compact + "</div>";
     html += "</div>";
+    html += '<ul class="cues cues-live">';
+    cueList.slice(0, 3).forEach(function (c) { html += "<li>" + esc(c) + "</li>"; });
+    html += "</ul>";
 
     const i = state.currentSet;
     sanitizeUpcomingSet(key, i);
     const s = isolateSet(((dayLog(date).exercises || {})[key] || sets)[i]);
-    const suggest = lastWeightBefore(key, date, i);
-    const weightShow = s.weight || suggest || "";
+    const shown = shownSetValues(ex, key, date, i, s);
     html += '<div class="pin-log">';
     html += '<div class="set is-current" data-act="focus-set" data-set="' + i + '">';
-    html += '<div class="set-head"><span>Set ' + (i + 1) + " · now</span>";
-    if (isLoggedSet(s)) html += "<span>logged</span>";
-    html += "</div>";
-    if (ex.log === "done") {
-      html +=
-        '<button type="button" class="btn btn-ghost" data-act="mark-done" data-set="' + i + '">' +
-        (s.done === true ? "Round done ✓" : "Mark this round done") + "</button>";
-    } else {
+    html += '<div class="set-head"><span>Set ' + (i + 1) + " · now</span></div>";
+    if (ex.log !== "done") {
       html += '<div class="set-grid">';
       if (ex.log === "weight-reps" || ex.log === "weight-time") {
         html += '<label class="field"><span>' + esc(ex.weightLabel || "Weight (lb)") + "</span>" +
-          stepperHtml(key, i, "weight", weightShow, 5, suggest || last || "0") + "</label>";
+          stepperHtml(key, i, "weight", shown.weight, 5, shown.weight || helpSeedFor(key) || "") + "</label>";
       }
       if (ex.log === "weight-reps") {
         html += '<label class="field field-reps"><span>Reps' + (ex.perSide ? " / side" : "") + "</span>" +
-          stepperHtml(key, i, "reps", s.reps || "", 1, String(ex.reps).split(/[^\d]/)[0] || "8") + "</label>";
+          stepperHtml(key, i, "reps", shown.reps, 1, shown.reps || defaultReps(ex)) + "</label>";
       }
       if (ex.log === "time" || ex.log === "weight-time") {
         html += '<label class="field"><span>Seconds</span>' +
-          stepperHtml(key, i, "time", s.time || "", 5, String(ex.hold || 30)) + "</label>";
+          stepperHtml(key, i, "time", shown.time, 5, shown.time || String(ex.hold || 30)) + "</label>";
       }
       html += "</div>";
       if (ex.note) {
         html +=
           '<label class="field" style="margin-top:8px"><span>What you used</span><input type="text" data-act="log" data-ex="' +
-          key + '" data-set="' + i + '" data-field="note" value="' + esc(s.note || "") +
+          key + '" data-set="' + i + '" data-field="note" value="' + esc(shown.note || "") +
           '" placeholder="machine / lunges / skip"></label>';
       }
     }
     html += "</div>";
+    if (state.logHint) html += '<p class="hint log-hint">' + esc(state.logHint) + "</p>";
 
-    if (ex.hold && (ex.log === "time" || ex.log === "weight-time")) {
-      if (state.hold) {
-        const left = Math.max(0, (state.hold.ends - Date.now()) / 1000);
-        html += '<div class="timer-face"><div class="clock">' + fmtClock(left) + '</div><div class="sub">Hold</div></div>';
-        html += '<div class="actions"><button type="button" class="btn btn-ghost" data-act="stop-hold">Stop</button></div>';
-      } else {
-        html +=
-          '<div class="actions"><button type="button" class="btn btn-ghost" data-act="start-hold" data-sec="' +
-          ex.hold + '">Start ' + (ex.hold >= 60 ? fmtClock(ex.hold) : ex.hold + "s") + " timer</button></div>";
-      }
-    }
-
-    const lastSet = state.currentSet >= nSets - 1;
-    html += '<div class="actions">';
-    html += '<button type="button" class="btn btn-primary" data-act="log-set">Log set</button>';
-    if (!lastSet && !isCircuit) {
-      html += '<button type="button" class="btn btn-ghost" data-act="next-set">Next set</button>';
-    }
-    html +=
-      '<button type="button" class="btn btn-ghost" data-act="next-ex">' +
-      (isCircuit && state.exIndex === list.length - 1
-        ? (state.round + 1 >= circuitRounds(week, log.highStress) ? "Finish circuit" : "Next round")
-        : state.exIndex === list.length - 1 ? "Finish workout" : "Next exercise") +
-      "</button>";
-    html += '<button type="button" class="btn btn-danger" data-act="skip-ex">' + (ex.optional ? "Skip" : "Skip exercise") + "</button>";
-    html += "</div></div>";
+    html += '<div class="actions">' + liftDockPrimaryHtml({
+      lastSet: state.currentSet >= nSets - 1,
+      currentLogged: isLoggedSet(s, key),
+      nextLabel: liftDockNextLabel(isCircuit, list.length, week, log)
+    }) + "</div></div>";
     $app.innerHTML = html;
+  }
+
+  function liftDockNextLabel(isCircuit, listLen, week, log) {
+    if (state.exIndex !== listLen - 1) return "Next exercise";
+    if (isCircuit && state.round + 1 < circuitRounds(week, log.highStress)) return "Next round";
+    return "Finish workout";
+  }
+
+  function liftDockPrimaryHtml(opts) {
+    if (opts.lastSet && opts.currentLogged) {
+      return '<button type="button" class="btn btn-primary" data-act="next-ex">' + opts.nextLabel + "</button>";
+    }
+    return '<button type="button" class="btn btn-primary" data-act="log-set">Log set</button>';
   }
 
   function circuitKey(exId) {
@@ -2070,20 +2175,9 @@
         "</div>";
       return;
     }
-    if (!state.rest) {
-      $overlay.hidden = true;
-      $overlay.innerHTML = "";
-      return;
-    }
-    const left = Math.max(0, (state.rest.ends - Date.now()) / 1000);
-    const go = left <= 0;
-    $overlay.hidden = false;
-    $overlay.innerHTML =
-      '<div class="sheet"><div class="clock">' + (go ? "GO" : fmtClock(left)) + "</div><h2>" +
-      esc(state.rest.label) + '</h2><p class="sub">' +
-      (go ? "Next set." : "Stay on this screen. It will buzz and beep if the browser allows.") +
-      '</p><div class="actions"><button type="button" class="btn btn-primary" data-act="skip-rest">' +
-      (go ? "Continue" : "Skip rest") + "</button></div></div>";
+    clearRest();
+    $overlay.hidden = true;
+    $overlay.innerHTML = "";
   }
 
   function persistUI() {
@@ -2270,13 +2364,24 @@
 
   function logSetAndRest() {
     const list = currentExerciseList();
+    if (!list[state.exIndex]) return;
     const ex = D.exercises[list[state.exIndex]];
+    const key = circuitKey(list[state.exIndex]);
     const isCircuit = dayMeta(state.selectedDate).type === "sat" && state.satChoice === "circuit";
     const nSets = isCircuit ? 1 : setsFor(ex, weekNumber(state.selectedDate), dayLog(state.selectedDate).highStress, state.selectedDate);
     const loggedIdx = state.currentSet;
-    writeSet(state.selectedDate, circuitKey(list[state.exIndex]), loggedIdx, "done", true);
+    const ok = commitScreenSet(state.selectedDate, key, loggedIdx, ex);
+    if (!ok) {
+      state.logHint = "Nothing to save.";
+      render();
+      return;
+    }
+    state.logHint = "";
     const last = loggedIdx >= nSets - 1;
-    if (!last) advanceCurrentSet();
+    if (!last) {
+      advanceCurrentSet();
+      prefillSetFrom(state.selectedDate, key, loggedIdx, state.currentSet);
+    }
     render();
   }
 
@@ -2415,6 +2520,7 @@
       render();
     } else if (act === "start-lift") {
       closeWatch();
+      state.logHint = "";
       markLiftStarted(circuitKey(currentExerciseList()[state.exIndex]));
       render();
     } else if (act === "watch-lift") {
@@ -2432,12 +2538,8 @@
       render();
     } else if (act === "log-set") {
       logSetAndRest();
-    } else if (act === "next-set") {
-      markSetDone();
-      advanceCurrentSet();
-      render();
     } else if (act === "next-ex" || act === "skip-ex") {
-      if (act === "next-ex") markSetDone();
+      state.logHint = "";
       state.exIndex += 1;
       state.currentSet = 0;
       render();
@@ -2458,15 +2560,18 @@
       render();
     } else if (act === "finish") {
       finishSession();
-    } else if (act === "skip-rest") {
-      skipRest();
     } else if (act === "step") {
       const field = t.getAttribute("data-field");
       const idx = Number(t.getAttribute("data-set"));
       const exId = t.getAttribute("data-ex");
       const delta = Number(t.getAttribute("data-delta"));
       const log = dayLog(state.selectedDate);
-      const cur = ((log.exercises[exId] || [])[idx] || {})[field];
+      let cur = ((log.exercises[exId] || [])[idx] || {})[field];
+      if (!String(cur || "").trim()) {
+        const box = t.closest(".stepper");
+        const input = box && box.querySelector("input");
+        if (input && String(input.value).trim()) cur = input.value;
+      }
       const n = (parseFloat(cur) || 0) + delta;
       const next = field === "reps" ? Math.max(0, Math.round(n)) : Math.max(0, Math.round(n * 2) / 2);
       writeSet(state.selectedDate, exId, idx, field, String(next));
@@ -2530,10 +2635,6 @@
 
   $overlay.addEventListener("click", function (e) {
     const t = e.target.closest("[data-act]");
-    if (t && t.getAttribute("data-act") === "skip-rest") {
-      skipRest();
-      return;
-    }
     if ((t && t.getAttribute("data-act") === "close-watch") || (state.watchUrl && e.target === $overlay)) {
       closeWatch();
       render();
@@ -2542,7 +2643,6 @@
 
   document.addEventListener("visibilitychange", function () {
     if (document.visibilityState === "visible") {
-      if (state.rest) tickRest();
       if (isAuthed()) render();
     }
   });

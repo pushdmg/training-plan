@@ -322,6 +322,18 @@ a.btn { text-decoration: none; color: inherit; }
   border-radius: 50%;
   background: var(--amber);
 }
+.cues-live {
+  flex: 0 0 auto;
+  margin: 0 -16px;
+  padding: 2px 16px 8px;
+  background: var(--bg);
+  border-top: 1px solid var(--line);
+}
+.cues-live li {
+  padding: 5px 0 5px 20px;
+  font-size: 15px;
+}
+.cues-live li::before { top: 12px; }
 
 .scheme {
   display: flex;
@@ -363,6 +375,16 @@ a.btn { text-decoration: none; color: inherit; }
   text-transform: uppercase;
 }
 .set.is-current .set-head { color: var(--amber); }
+.logged-hist { margin-top: 12px; }
+.logged-line {
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 6px 0;
+}
+.pin-log .log-hint { margin: 8px 0 0; color: var(--amber); }
 .set-grid {
   display: grid;
   grid-template-columns: 1fr;
