@@ -185,7 +185,8 @@ window.BOTFIT.exercises = {
     setsMax: 3,
     rest: 120,
     log: "weight-reps",
-    weightLabel: "Help wt"
+    weightLabel: "Help wt",
+    seedWeight: 100
   },
   "seated-row": {
     name: "Seated cable row",
@@ -468,7 +469,8 @@ window.BOTFIT.exercises = {
     setsMax: 3,
     rest: 90,
     log: "weight-reps",
-    weightLabel: "Help wt / body"
+    weightLabel: "Help wt / body",
+    seedWeight: 110
   },
   "hammer-curl": {
     name: "Hammer curl",

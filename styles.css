@@ -363,6 +363,16 @@ a.btn { text-decoration: none; color: inherit; }
   text-transform: uppercase;
 }
 .set.is-current .set-head { color: var(--amber); }
+.logged-hist { margin-top: 12px; }
+.logged-line {
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 6px 0;
+}
+.pin-log .log-hint { margin: 8px 0 0; color: var(--amber); }
 .set-grid {
   display: grid;
   grid-template-columns: 1fr;
