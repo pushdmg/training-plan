@@ -576,6 +576,24 @@ textarea { min-height: 72px; font-size: 16px; font-weight: 500; resize: vertical
   margin-top: 20px;
 }
 
+#sw-update {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 90;
+  min-height: 56px;
+  width: 100%;
+  padding: 14px 16px calc(14px + var(--safe-b));
+  background: #000000;
+  color: #ccff00;
+  border: 0;
+  border-top: 2px solid #ccff00;
+  font-weight: 800;
+  font-size: 18px;
+  text-align: center;
+}
+
 .round-bar {
   display: flex;
   gap: 8px;

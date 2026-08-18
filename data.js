@@ -556,6 +556,7 @@ window.BOTFIT.exercises = {
     rest: 0,
     log: "time",
     hold: 360,
+    timeUnit: "min",
     optional: true
   },
   "kb-deadlift": {
