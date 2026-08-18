@@ -1824,18 +1824,6 @@
     html += "</div>";
     if (state.logHint) html += '<p class="hint log-hint">' + esc(state.logHint) + "</p>";
 
-    if (ex.hold && (ex.log === "time" || ex.log === "weight-time")) {
-      if (state.hold) {
-        const left = Math.max(0, (state.hold.ends - Date.now()) / 1000);
-        html += '<div class="timer-face"><div class="clock">' + fmtClock(left) + '</div><div class="sub">Hold</div></div>';
-        html += '<div class="actions"><button type="button" class="btn btn-ghost" data-act="stop-hold">Stop</button></div>';
-      } else {
-        html +=
-          '<div class="actions"><button type="button" class="btn btn-ghost" data-act="start-hold" data-sec="' +
-          ex.hold + '">Start ' + (ex.hold >= 60 ? fmtClock(ex.hold) : ex.hold + "s") + " timer</button></div>";
-      }
-    }
-
     const lastSet = state.currentSet >= nSets - 1;
     const currentLogged = isLoggedSet(s, key);
     const nextLabel = isCircuit && state.exIndex === list.length - 1
