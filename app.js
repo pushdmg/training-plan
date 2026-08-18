@@ -1772,9 +1772,6 @@
       $app.innerHTML = html;
       return;
     }
-    html += '<ul class="cues">';
-    cueList.forEach(function (c) { html += "<li>" + esc(c) + "</li>"; });
-    html += "</ul>";
 
     let compact = "";
     for (let i = 0; i < nSets; i++) {
@@ -1792,6 +1789,9 @@
     }
     if (compact) html += '<div class="logged-hist">' + compact + "</div>";
     html += "</div>";
+    html += '<ul class="cues cues-live">';
+    cueList.slice(0, 3).forEach(function (c) { html += "<li>" + esc(c) + "</li>"; });
+    html += "</ul>";
 
     const i = state.currentSet;
     sanitizeUpcomingSet(key, i);

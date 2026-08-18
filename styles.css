@@ -322,6 +322,18 @@ a.btn { text-decoration: none; color: inherit; }
   border-radius: 50%;
   background: var(--amber);
 }
+.cues-live {
+  flex: 0 0 auto;
+  margin: 0 -16px;
+  padding: 2px 16px 8px;
+  background: var(--bg);
+  border-top: 1px solid var(--line);
+}
+.cues-live li {
+  padding: 5px 0 5px 20px;
+  font-size: 15px;
+}
+.cues-live li::before { top: 12px; }
 
 .scheme {
   display: flex;
