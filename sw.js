@@ -6,6 +6,7 @@ const ASSETS = [
   "./app.js",
   "./auth-errors.js",
   "./pwa-detect.js",
+  "./qa-build.js",
   "./config.js",
   "./data.js",
   "./manifest.json",

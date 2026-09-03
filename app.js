@@ -724,7 +724,8 @@
     return window.BOTFIT_CFG || null;
   }
   function qaBuildStampHtml() {
-    const stamp = sbCfg() && sbCfg().qaBuildStamp;
+    const qa = window.BOTFIT_QA;
+    const stamp = qa && qa.stamp;
     if (!stamp) return "";
     return '<p class="qa-build-stamp">' + esc(stamp) + "</p>";
   }
