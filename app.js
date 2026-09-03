@@ -1452,10 +1452,21 @@
       password: passEl ? String(passEl.value || "") : ""
     };
   }
+  const authErrApi = window.BOTFIT_AUTH || {};
+  function authFailMessage(res, fallback) {
+    if (authErrApi.authFailMessage) return authErrApi.authFailMessage(res, fallback);
+    const d = res && res.json ? res.json : res || {};
+    const msg = d.msg || d.error_description || d.error || "";
+    const code = d.error_code || "";
+    if (msg && code && String(msg).indexOf(code) === -1) return msg + " (" + code + ")";
+    if (msg) return msg;
+    if (code) return code;
+    return fallback;
+  }
   function authRequest(path, body, extraHeaders) {
     const c = sbCfg();
     if (!c || !c.supabaseUrl || !c.supabaseKey) {
-      return Promise.resolve({ ok: false, json: { msg: "Missing config" } });
+      return Promise.resolve({ ok: false, status: 0, networkError: false, json: { msg: "Missing config" } });
     }
     const headers = {
       apikey: c.supabaseKey,
@@ -1474,20 +1485,11 @@
         if (text) {
           try { json = JSON.parse(text); } catch (e) { json = null; }
         }
-        return { ok: res.ok, json: json || {} };
+        return { ok: res.ok, status: res.status, networkError: false, json: json || {} };
       });
     }).catch(function () {
-      return { ok: false, json: {} };
+      return { ok: false, status: 0, networkError: true, json: {} };
     });
-  }
-  function authFailMessage(data, fallback) {
-    const d = data || {};
-    const msg = d.msg || d.error_description || d.error || "";
-    const code = d.error_code || "";
-    if (msg && code && String(msg).indexOf(code) === -1) return msg + " (" + code + ")";
-    if (msg) return msg;
-    if (code) return code;
-    return fallback;
   }
   function doSignIn() {
     const form = readAuthForm();
@@ -1513,7 +1515,7 @@
         afterAuth(data);
         return;
       }
-      authErr = authFailMessage(data, "Could not sign in.");
+      authErr = authFailMessage(res, "Could not sign in.");
       renderLogin();
     });
   }
@@ -1554,11 +1556,11 @@
             afterAuth(tokenData);
             return;
           }
-          authErr = authFailMessage(tokenData, "Could not sign in.");
+          authErr = authFailMessage(tokenRes, "Could not sign in.");
           renderLogin();
         });
       }
-      authErr = authFailMessage(data, "Could not create account.");
+      authErr = authFailMessage(res, "Could not create account.");
       renderLogin();
     });
   }
@@ -1722,7 +1724,9 @@
     } else if (log.status === "skipped") {
       html += '<p class="hint">Done · skipped</p>';
     }
-    html += '<p class="install">Add to Home Screen from the share menu.</p>';
+    if (!(window.BOTFIT_PWA && window.BOTFIT_PWA.isStandalonePwa())) {
+      html += '<p class="install">Add to Home Screen from the share menu.</p>';
+    }
     html += "</div>";
 
     const proposal = loadProposal();
