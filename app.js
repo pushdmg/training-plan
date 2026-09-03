@@ -1722,7 +1722,9 @@
     } else if (log.status === "skipped") {
       html += '<p class="hint">Done · skipped</p>';
     }
-    html += '<p class="install">Add to Home Screen from the share menu.</p>';
+    if (!(window.BOTFIT_PWA && window.BOTFIT_PWA.isStandalonePwa())) {
+      html += '<p class="install">Add to Home Screen from the share menu.</p>';
+    }
     html += "</div>";
 
     const proposal = loadProposal();
