@@ -1,10 +1,11 @@
-const CACHE = "botfit-v27";
+const CACHE = "botfit-v31-gro25-26";
 const ASSETS = [
   "./",
   "./index.html",
   "./styles.css",
   "./app.js",
   "./auth-errors.js",
+  "./pwa-detect.js",
   "./config.js",
   "./data.js",
   "./manifest.json",
