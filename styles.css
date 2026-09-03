@@ -576,21 +576,6 @@ textarea { min-height: 72px; font-size: 16px; font-weight: 500; resize: vertical
   margin-top: 20px;
 }
 
-.qa-build-stamp {
-  flex: 0 0 auto;
-  margin: 0 -16px;
-  padding: 10px 16px;
-  text-align: center;
-  font-size: 13px;
-  font-weight: 800;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: #ccff00;
-  background: rgba(204, 255, 0, 0.1);
-  border-top: 1px solid rgba(204, 255, 0, 0.45);
-  border-bottom: 1px solid rgba(204, 255, 0, 0.45);
-}
-
 #sw-update {
   position: fixed;
   left: 0;
