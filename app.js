@@ -723,6 +723,11 @@
   function sbCfg() {
     return window.BOTFIT_CFG || null;
   }
+  function qaBuildStampHtml() {
+    const stamp = sbCfg() && sbCfg().qaBuildStamp;
+    if (!stamp) return "";
+    return '<p class="qa-build-stamp">' + esc(stamp) + "</p>";
+  }
   function sbReady() {
     const c = sbCfg();
     return !!(c && c.supabaseUrl && c.supabaseKey && athleteId());
@@ -1728,6 +1733,8 @@
       html += '<p class="install">Add to Home Screen from the share menu.</p>';
     }
     html += "</div>";
+
+    html += qaBuildStampHtml();
 
     const proposal = loadProposal();
     html += '<div class="pin-log">';
